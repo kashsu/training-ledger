@@ -1,7 +1,7 @@
 const CACHE = 'training-ledger-v1';
 const ASSETS = [
   './',
-  './training-ledger.html',
+  './index.html',
   './manifest.webmanifest'
 ];
 
@@ -20,6 +20,6 @@ self.addEventListener('fetch', event => {
       const copy = response.clone();
       caches.open(CACHE).then(cache => cache.put(event.request, copy));
       return response;
-    }).catch(() => caches.match('./training-ledger.html')))
+    }).catch(() => caches.match('./index.html')))
   );
 });
