@@ -1,17 +1,11 @@
-# Training Ledger — GitHub Pages + Supabase + GitHub Login
+# Training Ledger — Local First + Supabase
 
-Upload these files to the GitHub Pages repository:
-- index.html
-- config.js
-- supabase-schema.sql
+Local browser storage is always the source of truth.
 
-The database schema does not need to be run again if it has already been run.
+- Add/edit/delete workouts and sessions always save locally first.
+- Supabase is optional.
+- When connected and signed in with GitHub, the app pushes local workouts and sessions to Supabase.
+- Cloud failures never prevent local use.
+- The database schema is unchanged.
 
-Supabase setup:
-1. Enable GitHub under Authentication → Providers.
-2. Configure the GitHub OAuth app.
-3. Set the GitHub Pages URL in Authentication → URL Configuration.
-4. Enter the Supabase Project URL and publishable key in the tracker.
-5. Sign in with GitHub.
-
-Never expose a Supabase service-role/secret key.
+GitHub OAuth must be enabled in Supabase Authentication → Providers, and the GitHub Pages URL must be configured under Authentication → URL Configuration.

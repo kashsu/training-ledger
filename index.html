@@ -8,7 +8,6 @@
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;500;600&family=Work+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
 <style>
   :root{
     --paper:#1B1D19; --panel:#232620; --panel-2:#292C24; --ink:#EDE7D9;
@@ -61,7 +60,6 @@
   .btn.small{padding:6px 12px;font-size:10px;}
   .btn:disabled{opacity:0.35;cursor:not-allowed;}
   .hint{font-family:var(--font-mono);font-size:11px;color:var(--muted-2);margin-top:10px;}
-  #cloudStatus.ok{color:var(--teal);} #cloudStatus.fail{color:var(--stamp-red);}
 
   .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-bottom:22px;}
   .stat-card{background:var(--panel);border:1px solid var(--grid-line-strong);padding:16px;border-radius:2px;}
@@ -127,53 +125,7 @@
 </head>
 <body>
 <div class="wrap">
-  <div class="panel" id="cloudPanel">
-    <div class="panel-title-row"><div class="panel-title">Cloud sync</div></div>
-    <div id="setupArea">
-      <div class="hint" style="margin-top:0;margin-bottom:12px;">
-        Connect this tracker to Supabase once. Your workouts will then sync across devices.
-      </div>
-      <div class="form-row">
-        <div class="field" style="min-width:260px;">
-          <label for="supabaseUrlInput">Supabase project URL</label>
-          <input id="supabaseUrlInput" type="url" placeholder="https://your-project.supabase.co">
-        </div>
-        <div class="field" style="min-width:260px;">
-          <label for="supabaseKeyInput">Supabase publishable key</label>
-          <input id="supabaseKeyInput" type="password" placeholder="sb_publishable_...">
-        </div>
-        <div class="field" style="flex:0;">
-          <label>&nbsp;</label><button class="btn" id="connectSupabaseBtn">Connect</button>
-        </div>
-      </div>
-      <div class="hint">Use the publishable/anon key only. Never put a Supabase service-role key in this page.</div>
-    </div>
-    <div id="authArea" style="display:none;">
-      <div class="form-row">
-        <div class="field" style="min-width:220px;">
-          <label for="emailInput">Email</label>
-          <input id="emailInput" type="email" autocomplete="email" placeholder="you@example.com">
-        </div>
-        <div class="field" style="min-width:180px;">
-          <label for="passwordInput">Password</label>
-          <input id="passwordInput" type="password" autocomplete="current-password" placeholder="Minimum 6 characters">
-        </div>
-        <div class="field" style="flex:0;">
-          <label>&nbsp;</label><button class="btn" id="signInBtn">Sign in</button>
-        </div>
-        <div class="field" style="flex:0;">
-          <label>&nbsp;</label><button class="btn secondary" id="signUpBtn">Create account</button>
-        </div>
-        <div class="field" style="flex:0;">
-          <label>&nbsp;</label><button class="btn secondary" id="signOutBtn" style="display:none;">Sign out</button>
-        </div>
-      </div>
-      <div class="hint" id="cloudStatus">Not signed in.</div>
-    </div>
-  </div>
 
-
-  <div id="runtimeError" style="display:none;margin-bottom:12px;padding:10px;border:1px solid var(--stamp-red);color:var(--stamp-red);font-family:var(--font-mono);font-size:11px;"></div>
   <div class="hero">
     <div><span class="eyebrow">Kash · Training Ledger</span><h1>SESSION LOG</h1></div>
     <div class="streak-block"><div class="streak-num" id="streakNum">–</div><div class="streak-label">Day streak</div></div>
@@ -190,6 +142,35 @@
     </div>
     <div class="chips" id="workoutChips"></div>
     <div class="no-workouts" id="noWorkoutsHint" style="display:none;">No workouts saved yet — add one above, then select it below to log sessions without typos.</div>
+  </div>
+
+
+  <div class="panel" id="cloudPanel">
+    <div class="panel-title-row"><div class="panel-title">Cloud backup</div></div>
+    <div class="form-row">
+      <div class="field" style="min-width:250px;">
+        <label for="supabaseUrl">Supabase Project URL</label>
+        <input id="supabaseUrl" type="url" placeholder="https://your-project.supabase.co">
+      </div>
+      <div class="field" style="min-width:250px;">
+        <label for="supabaseKey">Supabase Publishable Key</label>
+        <input id="supabaseKey" type="password" placeholder="sb_publishable_...">
+      </div>
+      <div class="field" style="flex:0;">
+        <label>&nbsp;</label><button class="btn" id="cloudConnectBtn">Connect</button>
+      </div>
+      <div class="field" style="flex:0;">
+        <label>&nbsp;</label><button class="btn secondary" id="cloudSyncBtn" disabled>Push to Supabase</button>
+      </div>
+    </div>
+    <div class="hint" id="cloudStatus">
+      Local storage is always used first. Cloud sync is optional.
+    </div>
+      <div style="margin-top:12px;">
+        <button class="btn secondary" id="githubLoginBtn" type="button">Sign in with GitHub</button>
+        <button class="btn secondary" id="githubLogoutBtn" type="button" style="display:none;">Sign out</button>
+      </div>
+
   </div>
 
   <div class="panel">
@@ -279,10 +260,6 @@
 
 <script>
 (function(){
-  window.addEventListener('error', function(e){
-    const el=document.getElementById('runtimeError');
-    if(el){ el.style.display='block'; el.textContent='App error: '+(e.message||'JavaScript error'); }
-  });
   const ENTRIES_KEY = 'training-ledger-entries';
   const WORKOUTS_KEY = 'training-ledger-workouts';
   let entries = [];
@@ -304,233 +281,218 @@
   rangeFrom = todayStr(); rangeTo = todayStr();
   $('rangeFrom').value = rangeFrom; $('rangeTo').value = rangeTo;
 
-  // ---------- Storage / Supabase cloud sync ----------
-  const LOCAL_ENTRIES_KEY = 'training-ledger-entries';
-  const LOCAL_WORKOUTS_KEY = 'training-ledger-workouts';
+  // ---------- Storage: local-first, optional Supabase backup ----------
+  const ENTRIES_KEY = 'training-ledger-entries';
+  const WORKOUTS_KEY = 'training-ledger-workouts';
+  const SUPA_URL_KEY = 'training-ledger-supabase-url';
+  const SUPA_KEY_KEY = 'training-ledger-supabase-key';
+
+  let entries = [];
+  let workouts = [];
+  let selectedType = 'reps';
+  let selectedIds = new Set();
+  let editingId = null;
+  let editState = {};
+  let rangeFrom, rangeTo;
+
   let supabaseClient = null;
-  let currentUser = null;
-  let cloudReady = false;
+  let cloudConnected = false;
+  let cloudUser = null;
 
   function localLoad(){
-    try{ entries = JSON.parse(localStorage.getItem(LOCAL_ENTRIES_KEY) || '[]'); }catch(e){ entries = []; }
-    try{ workouts = JSON.parse(localStorage.getItem(LOCAL_WORKOUTS_KEY) || '[]'); }catch(e){ workouts = []; }
+    try{
+      const raw = JSON.parse(localStorage.getItem(ENTRIES_KEY) || '[]');
+      entries = Array.isArray(raw) ? raw : [];
+    }catch(e){ entries = []; }
+    try{
+      const raw = JSON.parse(localStorage.getItem(WORKOUTS_KEY) || '[]');
+      workouts = Array.isArray(raw) ? raw.filter(x => typeof x === 'string') : [];
+    }catch(e){ workouts = []; }
+
     if(workouts.length === 0 && entries.length > 0){
-      workouts = Array.from(new Set(entries.map(e => e.exercise))).sort((a,b)=>a.localeCompare(b));
+      workouts = Array.from(new Set(entries.map(e => e.exercise).filter(Boolean))).sort((a,b)=>a.localeCompare(b));
       localSaveWorkouts();
     }
   }
 
   function localSaveEntries(){
-    try{ localStorage.setItem(LOCAL_ENTRIES_KEY, JSON.stringify(entries)); }catch(e){}
-  }
-  function localSaveWorkouts(){
-    try{ localStorage.setItem(LOCAL_WORKOUTS_KEY, JSON.stringify(workouts)); }catch(e){}
-  }
-
-  function setCloudStatus(text, state=''){
-    const el = $('cloudStatus');
-    if(el){ el.textContent = text; el.className = 'hint ' + state; }
-  }
-
-  function setStatus(state){
-    const el = $('statusHint');
-    if(state === 'fail'){
-      el.textContent = 'Could not save to cloud. Check your connection and Supabase setup.';
-      el.style.color = 'var(--stamp-red)';
-    } else if(cloudReady && currentUser){
-      el.textContent = 'Saved to your cloud account. Available on your other devices after sign-in.';
-      el.style.color = 'var(--teal)';
-    } else {
-      el.textContent = 'Local mode: data is saved only in this browser until cloud sync is connected.';
-      el.style.color = '';
+    try{
+      localStorage.setItem(ENTRIES_KEY, JSON.stringify(entries));
+      return true;
+    }catch(e){
+      setCloudStatus('Local storage could not be written: ' + e.message, true);
+      return false;
     }
   }
 
-  function saveConfig(url, key){
-    localStorage.setItem('training-ledger-supabase-url', url);
-    localStorage.setItem('training-ledger-supabase-key', key);
+  function localSaveWorkouts(){
+    try{
+      localStorage.setItem(WORKOUTS_KEY, JSON.stringify(workouts));
+      return true;
+    }catch(e){
+      setCloudStatus('Local storage could not be written: ' + e.message, true);
+      return false;
+    }
   }
 
-  function getConfig(){
+  function setCloudStatus(text, error=false){
+    const el = $('cloudStatus');
+    if(!el) return;
+    el.textContent = text;
+    el.style.color = error ? 'var(--stamp-red)' : '';
+  }
+
+  function getCloudConfig(){
     return {
-      url: window.SUPABASE_URL || localStorage.getItem('training-ledger-supabase-url') || '',
-      key: window.SUPABASE_PUBLISHABLE_KEY || localStorage.getItem('training-ledger-supabase-key') || ''
+      url: localStorage.getItem(SUPA_URL_KEY) || '',
+      key: localStorage.getItem(SUPA_KEY_KEY) || ''
     };
   }
 
-  function initSupabase(urlOverride='', keyOverride=''){
-    const cfg = getConfig();
-    const url = urlOverride || cfg.url;
-    const key = keyOverride || cfg.key;
-    if(!url || !key){ setCloudStatus('Enter your Supabase Project URL and Publishable key.','fail'); return false; }
-    if(!window.supabase || typeof window.supabase.createClient !== 'function'){
-      setCloudStatus('Supabase library did not load. Refresh the page or check your internet connection.','fail');
-      return false;
-    }
+  function initCloud(){
+    const cfg = getCloudConfig();
+    if($('supabaseUrl')) $('supabaseUrl').value = cfg.url;
+    if($('supabaseKey')) $('supabaseKey').value = cfg.key;
+    if(!cfg.url || !cfg.key || !window.supabase) return;
+
     try{
-      supabaseClient = window.supabase.createClient(url, key);
-      cloudReady = true;
-      $('setupArea').style.display = 'none';
-      $('authArea').style.display = 'block';
-      setCloudStatus('Supabase connected. Sign in to sync your data.');
+      supabaseClient = window.supabase.createClient(cfg.url, cfg.key);
+      cloudConnected = true;
+      $('cloudSyncBtn').disabled = false;
+      setCloudStatus('Supabase connected. Local storage remains the source of truth.');
       supabaseClient.auth.getSession().then(({data}) => {
-        if(data && data.session) handleSignedIn(data.session.user);
+        cloudUser = data && data.session ? data.session.user : null;
+        updateGitHubButtons();
+        if(cloudUser) pushLocalToSupabase();
       });
       supabaseClient.auth.onAuthStateChange((_event, session) => {
-        if(session) handleSignedIn(session.user);
-        else handleSignedOut();
+        cloudUser = session ? session.user : null;
+        updateGitHubButtons();
+        if(cloudUser) pushLocalToSupabase();
       });
-      return true;
     }catch(e){
-      setCloudStatus('Could not initialize Supabase: ' + e.message, 'fail');
-      return false;
+      cloudConnected = false;
+      $('cloudSyncBtn').disabled = true;
+      setCloudStatus('Supabase connection failed. Local storage still works.', true);
     }
   }
 
-  async function handleSignedIn(user){
-    currentUser = user;
-    $('signInBtn').style.display = 'none';
-    $('signUpBtn').style.display = 'none';
-    $('signOutBtn').style.display = '';
-    $('emailInput').value = user.email || '';
-    $('passwordInput').value = '';
-    setCloudStatus('Signed in as ' + (user.email || 'user') + '. Syncing…', 'ok');
-    await syncLocalToCloud();
-    await loadCloudData();
+  function updateCloudStatus(){
+    if(cloudUser){
+      setCloudStatus('Connected and signed in. Local data can be pushed to Supabase.');
+    }else if(cloudConnected){
+      setCloudStatus('Connected. No Supabase login session; local data is still safe.');
+    }
   }
 
-  function handleSignedOut(){
-    currentUser = null;
-    $('signInBtn').style.display = '';
-    $('signUpBtn').style.display = '';
-    $('signOutBtn').style.display = 'none';
-    setCloudStatus(cloudReady ? 'Supabase connected. Sign in to sync your data.' : 'Not connected.');
-    setStatus('ok');
-  }
+  // Push ALL local data to Supabase. This is intentionally one-way:
+  // localStorage remains the source of truth and cloud never overwrites it.
+  async function pushLocalToSupabase(){
+    if(!cloudConnected || !supabaseClient){
+      setCloudStatus('Connect Supabase first. Your local data is unchanged.', true);
+      return;
+    }
+    if(!cloudUser){
+      setCloudStatus('Supabase is connected, but no user is signed in. Local data is unchanged.', true);
+      return;
+    }
 
-  async function syncLocalToCloud(){
-    if(!supabaseClient || !currentUser) return;
     try{
-      const localWorkouts = [...workouts];
-      if(localWorkouts.length){
-        const rows = localWorkouts.map(name => ({user_id: currentUser.id, name}));
-        const {error} = await supabaseClient.from('workouts').upsert(rows, {onConflict:'user_id,name'});
-        if(error) throw error;
+      if(workouts.length){
+        const workoutRows = workouts.map(name => ({user_id: cloudUser.id, name}));
+        const {error:werr} = await supabaseClient
+          .from('workouts')
+          .upsert(workoutRows, {onConflict:'user_id,name'});
+        if(werr) throw werr;
       }
 
       if(entries.length){
-        const rows = entries.map(e => ({
+        const entryRows = entries.map(e => ({
           id: e.id,
-          user_id: currentUser.id,
+          user_id: cloudUser.id,
           date: e.date,
           exercise: e.exercise,
           type: e.type,
           value: e.value
         }));
-        const {error} = await supabaseClient.from('training_entries').upsert(rows, {onConflict:'id'});
-        if(error) throw error;
+        const {error:eerr} = await supabaseClient
+          .from('training_entries')
+          .upsert(entryRows, {onConflict:'id'});
+        if(eerr) throw eerr;
       }
-      setCloudStatus('Cloud sync complete.', 'ok');
+
+      setCloudStatus('All local data pushed to Supabase successfully.');
     }catch(e){
-      setCloudStatus('Cloud sync failed: ' + e.message, 'fail');
-      setStatus('fail');
+      setCloudStatus('Cloud push failed. Local data is still intact: ' + (e.message || e), true);
     }
   }
 
-  async function loadCloudData(){
-    if(!supabaseClient || !currentUser) return;
-    try{
-      const [{data: ws, error: we}, {data: es, error: ee}] = await Promise.all([
-        supabaseClient.from('workouts').select('name').order('name'),
-        supabaseClient.from('training_entries').select('id,date,exercise,type,value').order('date',{ascending:false})
-      ]);
-      if(we) throw we;
-      if(ee) throw ee;
-      workouts = (ws || []).map(w => w.name);
-      entries = (es || []).map(e => ({id:e.id,date:e.date,exercise:e.exercise,type:e.type,value:Number(e.value)}));
-      localSaveWorkouts();
-      localSaveEntries();
-      renderAll();
-      setStatus('ok');
-      setCloudStatus('Cloud data loaded.', 'ok');
-    }catch(e){
-      setCloudStatus('Could not load cloud data: ' + e.message, 'fail');
-      setStatus('fail');
-    }
-  }
-
-  async function saveEntries(){
+  // Existing app functions call these names. They save locally first and then
+  // attempt a cloud push without allowing cloud errors to break the UI.
+  function saveEntries(){
     localSaveEntries();
-    if(!supabaseClient || !currentUser){ setStatus('ok'); return; }
-    try{
-      const latest = entries[entries.length - 1];
-      if(latest){
-        const {error} = await supabaseClient.from('training_entries').upsert({
-          id: latest.id, user_id: currentUser.id, date: latest.date,
-          exercise: latest.exercise, type: latest.type, value: latest.value
-        }, {onConflict:'id'});
-        if(error) throw error;
-      }
-      setStatus('ok');
-    }catch(e){ setStatus('fail'); }
+    if(cloudConnected && cloudUser) pushLocalToSupabase();
   }
 
-  async function deleteCloudEntry(id){
-    if(!supabaseClient || !currentUser) return;
-    const {error} = await supabaseClient.from('training_entries').delete().eq('id', id);
-    if(error) throw error;
-  }
-
-  async function saveWorkouts(){
+  function saveWorkouts(){
     localSaveWorkouts();
-    if(!supabaseClient || !currentUser) return true;
-    try{
-      const rows = workouts.map(name => ({user_id: currentUser.id, name}));
-      if(rows.length){
-        const {error} = await supabaseClient.from('workouts').upsert(rows, {onConflict:'user_id,name'});
-        if(error) throw error;
-      }
-      setCloudStatus('Workout list saved to cloud.', 'ok');
-      return true;
-    }catch(e){
-      setCloudStatus('Workout saved locally; cloud sync failed: ' + (e.message || e), 'fail');
-      return false;
-    }
-  }
-
-  async function removeCloudWorkout(name){
-    if(!supabaseClient || !currentUser) return;
-    const {error} = await supabaseClient.from('workouts').delete().eq('user_id',currentUser.id).eq('name',name);
-    if(error) throw error;
+    if(cloudConnected && cloudUser) pushLocalToSupabase();
   }
 
   localLoad();
 
-  // ---------- Workouts panel ----------
-  // This handler is deliberately independent of Supabase so adding a workout
-  // always works locally, even when cloud authentication is unavailable.
-  function addWorkoutLocal(){
-    const input = $('newWorkoutInput');
-    const val = input.value.trim();
-    if(!val) { input.focus(); return; }
-    if(!workouts.some(w => w.toLowerCase() === val.toLowerCase())){
-      workouts.push(val);
-      workouts.sort((a,b)=>a.localeCompare(b));
-      localSaveWorkouts();
-      renderWorkoutChips();
-      renderExerciseSelect();
-    }
-    input.value = '';
-    input.focus();
-    if(supabaseClient && currentUser) saveWorkouts();
-  }
 
-  $('addWorkoutBtn').addEventListener('click', addWorkoutLocal);
-  $('newWorkoutInput').addEventListener('keydown', e => {
-    if(e.key === 'Enter') addWorkoutLocal();
+  $('cloudConnectBtn').addEventListener('click', async () => {
+    const url = $('supabaseUrl').value.trim().replace(/\/+$/,'');
+    const key = $('supabaseKey').value.trim();
+
+    if(!url || !key){
+      setCloudStatus('Enter both the Supabase Project URL and publishable key.', true);
+      return;
+    }
+    if(!/^https:\/\/[a-z0-9-]+\.supabase\.co$/i.test(url)){
+      setCloudStatus('Use the Project URL ending in .supabase.co, not /rest/v1/.', true);
+      return;
+    }
+
+    localStorage.setItem(SUPA_URL_KEY, url);
+    localStorage.setItem(SUPA_KEY_KEY, key);
+    initCloud();
+
+    if(cloudConnected){
+      setCloudStatus('Connected. Sign in to Supabase to enable cloud backup.');
+    }
+  });
+
+  $('cloudSyncBtn').addEventListener('click', () => {
+    pushLocalToSupabase();
   });
 
 
+  $('githubLoginBtn').addEventListener('click', async () => {
+    if(!cloudConnected || !supabaseClient){
+      setCloudStatus('Connect Supabase first.', true);
+      return;
+    }
+    const {error} = await supabaseClient.auth.signInWithOAuth({
+      provider: 'github',
+      options: {redirectTo: window.location.origin + window.location.pathname}
+    });
+    if(error) setCloudStatus('GitHub login failed: ' + error.message, true);
+  });
+
+  $('githubLogoutBtn').addEventListener('click', async () => {
+    if(supabaseClient) await supabaseClient.auth.signOut();
+  });
+
+  function updateGitHubButtons(){
+    if(!$('githubLoginBtn')) return;
+    $('githubLoginBtn').style.display = cloudUser ? 'none' : '';
+    $('githubLogoutBtn').style.display = cloudUser ? '' : 'none';
+    updateCloudStatus();
+  }
+
+  // ---------- Workouts panel ----------
   $('addWorkoutBtn').addEventListener('click', () => {
     const val = $('newWorkoutInput').value.trim();
     if(!val) return;
@@ -541,11 +503,9 @@
   });
   $('newWorkoutInput').addEventListener('keydown', (e) => { if(e.key === 'Enter') $('addWorkoutBtn').click(); });
 
-  async function removeWorkout(name){
+  function removeWorkout(name){
     workouts = workouts.filter(w => w !== name);
-    localSaveWorkouts();
-    try{ await removeCloudWorkout(name); }catch(e){ setCloudStatus('Could not remove workout from cloud: '+e.message,'fail'); }
-    renderWorkoutChips(); renderExerciseSelect();
+    saveWorkouts(); renderWorkoutChips(); renderExerciseSelect();
   }
   function renderWorkoutChips(){
     $('workoutChips').innerHTML = workouts.map(w => `<div class="chip">${escapeHtml(w)}<button data-name="${escapeHtml(w)}" title="Remove from list">×</button></div>`).join('');
@@ -562,42 +522,8 @@
   $('typeReps').addEventListener('click', () => { selectedType='reps'; $('typeReps').classList.add('active'); $('typeMins').classList.remove('active'); $('valueLabel').textContent='Reps'; });
   $('typeMins').addEventListener('click', () => { selectedType='mins'; $('typeMins').classList.add('active'); $('typeReps').classList.remove('active'); $('valueLabel').textContent='Minutes'; });
 
-
-  $('connectSupabaseBtn').addEventListener('click', () => {
-    const url = $('supabaseUrlInput').value.trim().replace(/\/$/, '');
-    const key = $('supabaseKeyInput').value.trim();
-    if(!url || !key){ setCloudStatus('Enter both Supabase values.', 'fail'); return; }
-    if(!/^https:\/\/[^\s]+\.supabase\.co$/.test(url)){
-      setCloudStatus('Project URL should look like https://your-project.supabase.co (without /rest/v1/).','fail'); return;
-    }
-    saveConfig(url, key);
-    initSupabase(url, key);
-  });
-
-  $('signInBtn').addEventListener('click', async () => {
-    if(!supabaseClient) return;
-    const email=$('emailInput').value.trim(), password=$('passwordInput').value;
-    if(!email || !password){ setCloudStatus('Enter your email and password.', 'fail'); return; }
-    const {error}=await supabaseClient.auth.signInWithPassword({email,password});
-    if(error) setCloudStatus(error.message,'fail');
-  });
-
-  $('signUpBtn').addEventListener('click', async () => {
-    if(!supabaseClient) return;
-    const email=$('emailInput').value.trim(), password=$('passwordInput').value;
-    if(!email || password.length < 6){ setCloudStatus('Enter an email and a password of at least 6 characters.','fail'); return; }
-    const {data,error}=await supabaseClient.auth.signUp({email,password});
-    if(error){ setCloudStatus(error.message,'fail'); return; }
-    if(data.session) setCloudStatus('Account created and signed in.','ok');
-    else setCloudStatus('Account created. Check your email if confirmation is enabled in Supabase.','ok');
-  });
-
-  $('signOutBtn').addEventListener('click', async () => {
-    if(supabaseClient) await supabaseClient.auth.signOut();
-  });
-
   // ---------- Add entry ----------
-  $('logBtn').addEventListener('click', async () => {
+  $('logBtn').addEventListener('click', () => {
     const exercise = $('exerciseSelect').value;
     const value = parseFloat($('valueInput').value);
     const date = $('dateInput').value || todayStr();
@@ -605,7 +531,7 @@
     if(!value || value <= 0){ $('valueInput').focus(); return; }
     entries.push({ id: Date.now()+'-'+Math.random().toString(36).slice(2,7), date, exercise, type: selectedType, value });
     $('valueInput').value = '';
-    await saveEntries(); renderAll();
+    saveEntries(); renderAll();
   });
 
   // ---------- Collapsibles ----------
@@ -623,11 +549,9 @@
   });
 
   // ---------- Clear / import / export ----------
-  $('clearBtn').addEventListener('click', async () => {
+  $('clearBtn').addEventListener('click', () => {
     if(!confirm('This will permanently delete every logged session (workout list stays). Continue?')) return;
-    entries = []; selectedIds.clear(); localSaveEntries();
-    if(supabaseClient && currentUser){ try{ const {error}=await supabaseClient.from('training_entries').delete().eq('user_id',currentUser.id); if(error) throw error; }catch(e){ setCloudStatus('Could not clear cloud data: '+e.message,'fail'); } }
-    renderAll();
+    entries = []; selectedIds.clear(); saveEntries(); renderAll();
   });
 
   $('importBtn').addEventListener('click', () => $('importFile').click());
@@ -635,7 +559,7 @@
     const file = e.target.files[0];
     if(!file) return;
     const reader = new FileReader();
-    reader.onload = async (evt) => {
+    reader.onload = (evt) => {
       try{
         const wb = XLSX.read(evt.target.result, {type:'binary'});
         const ws = wb.Sheets[wb.SheetNames[0]];
@@ -653,9 +577,7 @@
           added++;
         });
         workouts.sort((a,b)=>a.localeCompare(b));
-        localSaveEntries(); localSaveWorkouts();
-        if(supabaseClient && currentUser){ await syncLocalToCloud(); await loadCloudData(); }
-        renderAll();
+        saveEntries(); saveWorkouts(); renderAll();
         alert(added + ' session(s) imported.');
       }catch(err){ alert('Could not read that file. Make sure it is an .xlsx exported from this app.'); }
       $('importFile').value = '';
@@ -687,14 +609,11 @@
     if(e.target.checked) entries.forEach(en => selectedIds.add(en.id)); else selectedIds.clear();
     renderTable();
   });
-  $('deleteSelectedBtn').addEventListener('click', async () => {
+  $('deleteSelectedBtn').addEventListener('click', () => {
     if(selectedIds.size === 0) return;
     if(!confirm(`Delete ${selectedIds.size} selected session(s)? This can't be undone.`)) return;
-    const ids = [...selectedIds];
     entries = entries.filter(en => !selectedIds.has(en.id));
-    selectedIds.clear(); localSaveEntries();
-    if(supabaseClient && currentUser){ try{ const {error}=await supabaseClient.from('training_entries').delete().eq('user_id',currentUser.id).in('id',ids); if(error) throw error; }catch(e){ setCloudStatus('Could not delete selected cloud data: '+e.message,'fail'); } }
-    renderAll();
+    selectedIds.clear(); saveEntries(); renderAll();
   });
 
   // ---------- Derived data ----------
@@ -859,34 +778,22 @@
       editingId = en.id; editState = {date:en.date, exercise:en.exercise, type:en.type, value:en.value};
       renderTable();
     }));
-    tbody.querySelectorAll('button.del').forEach(btn => btn.addEventListener('click', async () => {
+    tbody.querySelectorAll('button.del').forEach(btn => btn.addEventListener('click', () => {
       if(!confirm('Delete this session?')) return;
-      const id = btn.getAttribute('data-id');
-      entries = entries.filter(e => e.id !== id);
-      selectedIds.delete(id);
-      localSaveEntries();
-      if(supabaseClient && currentUser){ try{ await deleteCloudEntry(id); }catch(e){ setCloudStatus('Could not delete cloud entry: '+e.message,'fail'); } }
-      renderAll();
+      entries = entries.filter(e => e.id !== btn.getAttribute('data-id'));
+      selectedIds.delete(btn.getAttribute('data-id'));
+      saveEntries(); renderAll();
     }));
     if(editingId){
       $('editTypeReps').addEventListener('click', () => { editState.type='reps'; renderTable(); });
       $('editTypeMins').addEventListener('click', () => { editState.type='mins'; renderTable(); });
       $('cancelEditBtn').addEventListener('click', () => { editingId=null; renderTable(); });
-      $('saveEditBtn').addEventListener('click', async () => {
+      $('saveEditBtn').addEventListener('click', () => {
         const date=$('editDate').value, exercise=$('editExercise').value, value=parseFloat($('editValue').value);
         if(!date||!exercise||!value||value<=0) return;
         const en = entries.find(e => e.id === editingId);
         en.date=date; en.exercise=exercise; en.type=editState.type; en.value=value;
-        editingId = null; localSaveEntries();
-        if(supabaseClient && currentUser){
-          try{
-            const {error}=await supabaseClient.from('training_entries').update({
-              date, exercise, type:editState.type, value
-            }).eq('id', en.id).eq('user_id', currentUser.id);
-            if(error) throw error;
-          }catch(e){ setCloudStatus('Could not update cloud entry: '+e.message,'fail'); }
-        }
-        renderAll();
+        editingId = null; saveEntries(); renderAll();
       });
     }
     updateBulkBar();
@@ -903,16 +810,9 @@
     if($('barsContent').style.display !== 'none') renderBars();
   }
 
-  try{
-    loadAll();
-    document.querySelector('[data-preset="today"]').classList.add('active-preset');
-  }catch(e){
-    console.error('Training Ledger startup error:', e);
-  }
-  const savedCfg = getConfig();
-  if(savedCfg.url) $('supabaseUrlInput').value = savedCfg.url;
-  if(savedCfg.key) $('supabaseKeyInput').value = savedCfg.key;
-  try{ initSupabase(); }catch(e){ console.error('Supabase init error:', e); }
+  loadAll();
+  document.querySelector('[data-preset="today"]').classList.add('active-preset');
+  initCloud();
 })();
 </script>
 </body>
