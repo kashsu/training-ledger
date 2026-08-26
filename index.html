@@ -8,7 +8,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;500;600&family=Work+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="./config.js"></script>
+
 <style>
   :root{
     --paper:#1B1D19; --panel:#232620; --panel-2:#292C24; --ink:#EDE7D9;
@@ -353,11 +353,17 @@
     };
   }
 
-  function initSupabase(){
+  function initSupabase(urlOverride='', keyOverride=''){
     const cfg = getConfig();
-    if(!cfg.url || !cfg.key || !window.supabase) return false;
+    const url = urlOverride || cfg.url;
+    const key = keyOverride || cfg.key;
+    if(!url || !key){ setCloudStatus('Enter your Supabase Project URL and Publishable key.','fail'); return false; }
+    if(!window.supabase || typeof window.supabase.createClient !== 'function'){
+      setCloudStatus('Supabase library did not load. Refresh the page or check your internet connection.','fail');
+      return false;
+    }
     try{
-      supabaseClient = window.supabase.createClient(cfg.url, cfg.key);
+      supabaseClient = window.supabase.createClient(url, key);
       cloudReady = true;
       $('setupArea').style.display = 'none';
       $('authArea').style.display = 'block';
@@ -524,11 +530,14 @@
 
 
   $('connectSupabaseBtn').addEventListener('click', () => {
-    const url = $('supabaseUrlInput').value.trim();
+    const url = $('supabaseUrlInput').value.trim().replace(/\/$/, '');
     const key = $('supabaseKeyInput').value.trim();
     if(!url || !key){ setCloudStatus('Enter both Supabase values.', 'fail'); return; }
+    if(!/^https:\/\/[^\s]+\.supabase\.co$/.test(url)){
+      setCloudStatus('Project URL should look like https://your-project.supabase.co (without /rest/v1/).','fail'); return;
+    }
     saveConfig(url, key);
-    if(!initSupabase()) setCloudStatus('Connection failed. Check the URL and publishable key.', 'fail');
+    initSupabase(url, key);
   });
 
   $('signInBtn').addEventListener('click', async () => {
