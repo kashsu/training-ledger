@@ -119,6 +119,7 @@
   .cat-pill{font-size:10px;letter-spacing:1px;text-transform:uppercase;padding:3px 8px;border-radius:10px;border:1px solid var(--grid-line-strong);color:var(--muted);}
   .cat-pill.reps{color:var(--amber);border-color:var(--amber-dim);}
   .cat-pill.mins{color:var(--teal);border-color:var(--teal);}
+  .cat-pill.kms{color:var(--teal);border-color:var(--teal);}
 
   .table-toolbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px;}
   .table-toolbar .left{display:flex;align-items:center;gap:10px;font-family:var(--font-mono);font-size:11px;color:var(--muted);}
@@ -157,7 +158,7 @@
       </div>
       <div class="field" style="min-width:110px;">
         <label>Measured in</label>
-        <div class="type-toggle"><button type="button" id="typeReps" class="active">Reps</button><button type="button" id="typeMins">Mins</button></div>
+        <div class="type-toggle"><button type="button" id="typeReps" class="active">Reps</button><button type="button" id="typeMins">Mins</button><button type="button" id="typeKms" style="display:none;">KMs</button></div>
       </div>
       <div class="field" style="min-width:90px;"><label for="valueInput" id="valueLabel">Reps</label><input type="number" id="valueInput" min="0" step="1" placeholder="0"></div>
       <div class="field" style="min-width:150px;"><label for="dateInput">Date</label><input type="date" id="dateInput"></div>
@@ -187,7 +188,7 @@
     <div class="range-label" id="rangeLabel"></div>
     <div class="table-scroll">
       <table id="breakdownTable">
-        <thead><tr><th>Workout</th><th>Sessions</th><th>Total reps</th><th>Total mins</th></tr></thead>
+        <thead><tr><th>Workout</th><th>Sessions</th><th>Total reps</th><th>Total mins</th><th>Total km</th></tr></thead>
         <tbody></tbody>
       </table>
     </div>
@@ -306,8 +307,28 @@
   }
 
   // ---------- Type toggle ----------
-  $('typeReps').addEventListener('click', () => { selectedType='reps'; $('typeReps').classList.add('active'); $('typeMins').classList.remove('active'); $('valueLabel').textContent='Reps'; });
-  $('typeMins').addEventListener('click', () => { selectedType='mins'; $('typeMins').classList.add('active'); $('typeReps').classList.remove('active'); $('valueLabel').textContent='Minutes'; });
+  function isRunningSelected(){ return $('exerciseSelect').value.trim().toLowerCase() === 'running'; }
+  function updateMeasurementUI(){
+    const running = isRunningSelected();
+    $('typeKms').style.display = running ? '' : 'none';
+    if(running){
+      selectedType='kms';
+      $('typeKms').classList.add('active');
+      $('typeReps').classList.remove('active');
+      $('typeMins').classList.remove('active');
+      $('valueLabel').textContent='Kilometers';
+    }else{
+      if(selectedType==='kms') selectedType='reps';
+      $('typeKms').classList.remove('active');
+      $('typeReps').classList.toggle('active', selectedType==='reps');
+      $('typeMins').classList.toggle('active', selectedType==='mins');
+      $('valueLabel').textContent = selectedType==='mins' ? 'Minutes' : 'Reps';
+    }
+  }
+  $('exerciseSelect').addEventListener('change', updateMeasurementUI);
+  $('typeReps').addEventListener('click', () => { if(isRunningSelected()) return; selectedType='reps'; updateMeasurementUI(); });
+  $('typeMins').addEventListener('click', () => { if(isRunningSelected()) return; selectedType='mins'; updateMeasurementUI(); });
+  $('typeKms').addEventListener('click', () => { if(isRunningSelected()){ selectedType='kms'; updateMeasurementUI(); } });
 
   // ---------- Add entry ----------
   $('logBtn').addEventListener('click', () => {
@@ -356,7 +377,7 @@
           const date = normalizeDate(r.Date);
           const exercise = (r.Workout || r.Exercise || '').toString().trim();
           const catRaw = (r.Category || r.Type || '').toString().toLowerCase();
-          const type = catRaw.startsWith('rep') ? 'reps' : (catRaw.startsWith('min') ? 'mins' : null);
+          const type = catRaw.startsWith('rep') ? 'reps' : (catRaw.startsWith('min') ? 'mins' : (catRaw.startsWith('km') ? 'kms' : null));
           const value = parseFloat(r.Amount || r.Value);
           if(!date || !exercise || !type || !value || value<=0) return;
           entries.push({ id: Date.now()+'-'+Math.random().toString(36).slice(2,7)+added, date, exercise, type, value });
@@ -383,7 +404,7 @@
   $('exportBtn').addEventListener('click', () => {
     if(entries.length === 0){ alert('No sessions to export yet.'); return; }
     const rows = sortedEntriesDesc().slice().reverse().map(en => ({
-      Date: en.date, Workout: en.exercise, Category: en.type==='reps'?'Reps':'Minutes', Amount: en.value
+      Date: en.date, Workout: en.exercise, Category: en.type==='reps'?'Reps':(en.type==='mins'?'Minutes':'KMs'), Amount: en.value
     }));
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
@@ -470,23 +491,23 @@
     const inRange = entries.filter(e => e.date >= from && e.date <= to);
     const tbody = document.querySelector('#breakdownTable tbody');
     if(inRange.length === 0){
-      tbody.innerHTML = '<tr><td class="empty-state" colspan="4">No sessions logged in this range.</td></tr>';
+      tbody.innerHTML = '<tr><td class="empty-state" colspan="5">No sessions logged in this range.</td></tr>';
       return;
     }
     const map = {};
     inRange.forEach(e => {
-      if(!map[e.exercise]) map[e.exercise] = {sessions:0, reps:0, mins:0};
+      if(!map[e.exercise]) map[e.exercise] = {sessions:0, reps:0, mins:0, kms:0};
       map[e.exercise].sessions++;
-      if(e.type === 'reps') map[e.exercise].reps += e.value; else map[e.exercise].mins += e.value;
+      if(e.type === 'reps') map[e.exercise].reps += e.value; else if(e.type === 'mins') map[e.exercise].mins += e.value; else if(e.type === 'kms') map[e.exercise].kms += e.value;
     });
     const names = Object.keys(map).sort((a,b)=>a.localeCompare(b));
-    let totalSessions=0, totalReps=0, totalMins=0;
+    let totalSessions=0, totalReps=0, totalMins=0, totalKms=0;
     const rowsHtml = names.map(name => {
       const r = map[name];
-      totalSessions += r.sessions; totalReps += r.reps; totalMins += r.mins;
-      return `<tr><td>${escapeHtml(name)}</td><td>${r.sessions}</td><td>${r.reps || '—'}</td><td>${r.mins || '—'}</td></tr>`;
+      totalSessions += r.sessions; totalReps += r.reps; totalMins += r.mins; totalKms += r.kms;
+      return `<tr><td>${escapeHtml(name)}</td><td>${r.sessions}</td><td>${r.reps || '—'}</td><td>${r.mins || '—'}</td><td>${r.kms || '—'}</td></tr>`;
     }).join('');
-    tbody.innerHTML = rowsHtml + `<tr class="totals-row"><td>Total</td><td>${totalSessions}</td><td>${totalReps || '—'}</td><td>${totalMins || '—'}</td></tr>`;
+    tbody.innerHTML = rowsHtml + `<tr class="totals-row"><td>Total</td><td>${totalSessions}</td><td>${totalReps || '—'}</td><td>${totalMins || '—'}</td><td>${totalKms || '—'}</td></tr>`;
   }
 
   // ---------- Render: calendar ----------
@@ -538,13 +559,13 @@
           <td></td>
           <td><input type="date" id="editDate" value="${editState.date}"></td>
           <td><select id="editExercise">${options}</select></td>
-          <td><div class="type-toggle mini" style="width:130px;"><button type="button" id="editTypeReps" class="${editState.type==='reps'?'active':''}">Reps</button><button type="button" id="editTypeMins" class="${editState.type==='mins'?'active':''}">Mins</button></div></td>
+          <td><div class="type-toggle mini" style="width:160px;"><button type="button" id="editTypeReps" class="${editState.type==='reps'?'active':''}" ${editState.exercise.toLowerCase()==='running'?'style=\"display:none\"':''}>Reps</button><button type="button" id="editTypeMins" class="${editState.type==='mins'?'active':''}" ${editState.exercise.toLowerCase()==='running'?'style=\"display:none\"':''}>Mins</button><button type="button" id="editTypeKms" class="${editState.type==='kms'?'active':''}" ${editState.exercise.toLowerCase()==='running'?'':'style=\"display:none\"'}>KMs</button></div></td>
           <td><input type="number" id="editValue" min="0" step="1" value="${editState.value}" style="width:80px;"></td>
           <td class="row-actions"><button class="save" id="saveEditBtn">Save</button><button id="cancelEditBtn">Cancel</button></td>
         </tr>`;
       }
-      const pillClass = en.type === 'reps' ? 'reps' : 'mins';
-      const catLabel = en.type === 'reps' ? 'Reps' : 'Minutes';
+      const pillClass = en.type === 'reps' ? 'reps' : (en.type === 'kms' ? 'kms' : 'mins');
+      const catLabel = en.type === 'reps' ? 'Reps' : (en.type === 'kms' ? 'KMs' : 'Minutes');
       return `<tr>
         <td><input type="checkbox" class="rowChk" data-id="${en.id}" ${selectedIds.has(en.id)?'checked':''}></td>
         <td class="date-col">${fmtDateLabel(en.date)}</td>
@@ -574,6 +595,8 @@
     if(editingId){
       $('editTypeReps').addEventListener('click', () => { editState.type='reps'; renderTable(); });
       $('editTypeMins').addEventListener('click', () => { editState.type='mins'; renderTable(); });
+      $('editTypeKms').addEventListener('click', () => { if($('editExercise').value.trim().toLowerCase()==='running'){ editState.type='kms'; renderTable(); } });
+      $('editExercise').addEventListener('change', () => { if($('editExercise').value.trim().toLowerCase()==='running'){ editState.type='kms'; renderTable(); } else if(editState.type==='kms'){ editState.type='reps'; renderTable(); } });
       $('cancelEditBtn').addEventListener('click', () => { editingId=null; renderTable(); });
       $('saveEditBtn').addEventListener('click', () => {
         const date=$('editDate').value, exercise=$('editExercise').value, value=parseFloat($('editValue').value);
@@ -598,6 +621,7 @@
   }
 
   loadAll();
+  updateMeasurementUI();
   document.querySelector('[data-preset="today"]').classList.add('active-preset');
 
   if ('serviceWorker' in navigator) {
