@@ -4,8 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Training Ledger</title>
-<link rel="manifest" href="manifest.webmanifest">
+<link rel="manifest" href="./manifest.json">
 <meta name="theme-color" content="#1B1D19">
+<link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -600,7 +601,7 @@
   document.querySelector('[data-preset="today"]').classList.add('active-preset');
 
   if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
+    window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js', {scope: './'}).catch(() => {}));
   }
 })();
 </script>
