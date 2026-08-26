@@ -1,42 +1,13 @@
-# Training Ledger — Vercel + Supabase
+# Training Ledger — GitHub Pages + Supabase + GitHub Login
 
-This is the original Training Ledger UI upgraded with optional cloud sync.
+Upload `index.html`, `config.js`, and `supabase-schema.sql` to your GitHub Pages repository.
 
-## 1. Create the Supabase database
+## Supabase
+1. Run `supabase-schema.sql` once in SQL Editor.
+2. In Authentication → Providers, enable GitHub.
+3. Create a GitHub OAuth App and enter its Client ID/Secret in Supabase.
+4. In Authentication → URL Configuration, add your exact GitHub Pages URL to Site URL / Redirect URLs.
 
-Create a Supabase project, open SQL Editor, and run `supabase-schema.sql`.
+The app uses the browser's current GitHub Pages URL as the OAuth redirect URL.
 
-## 2. Get the browser-safe credentials
-
-From your Supabase project, copy:
-- Project URL
-- Publishable key (or legacy anon key if your project exposes it)
-
-Do NOT use a service-role/secret key in the browser.
-
-## 3. Connect the app
-
-Option A: open the deployed app and enter the URL + publishable key in the Cloud sync panel.
-
-Option B: put them in `config.js`:
-
-```js
-window.SUPABASE_URL = "https://YOUR-PROJECT.supabase.co";
-window.SUPABASE_PUBLISHABLE_KEY = "YOUR-PUBLISHABLE-KEY";
-```
-
-## 4. Deploy to Vercel
-
-Put `index.html`, `config.js`, and `supabase-schema.sql` in a GitHub repository, then import that repository into Vercel.
-
-No build command is required. `index.html` is the site entry point.
-
-## Data behavior
-
-- Before sign-in: data is kept locally in the current browser.
-- After sign-in: workout definitions and sessions sync to Supabase.
-- Existing local data is pushed to the cloud when you first sign in.
-- The same account can be used on another phone or computer.
-- Excel import/export remains available.
-
-The database uses Row Level Security so each signed-in user can access only their own rows.
+Do not expose a Supabase service-role/secret key.
