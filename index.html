@@ -149,15 +149,31 @@
       <div class="hint">Use the publishable/anon key only. Never put a Supabase service-role key in this page.</div>
     </div>
     <div id="authArea" style="display:none;">
-      <div style="margin-top:12px;">
-        <button class="btn secondary" id="githubSignInBtn" type="button">Sign in with GitHub</button>
-        <button class="btn secondary" id="githubSignOutBtn" type="button" style="display:none;">Sign out</button>
+      <div class="form-row">
+        <div class="field" style="min-width:220px;">
+          <label for="emailInput">Email</label>
+          <input id="emailInput" type="email" autocomplete="email" placeholder="you@example.com">
+        </div>
+        <div class="field" style="min-width:180px;">
+          <label for="passwordInput">Password</label>
+          <input id="passwordInput" type="password" autocomplete="current-password" placeholder="Minimum 6 characters">
+        </div>
+        <div class="field" style="flex:0;">
+          <label>&nbsp;</label><button class="btn" id="signInBtn">Sign in</button>
+        </div>
+        <div class="field" style="flex:0;">
+          <label>&nbsp;</label><button class="btn secondary" id="signUpBtn">Create account</button>
+        </div>
+        <div class="field" style="flex:0;">
+          <label>&nbsp;</label><button class="btn secondary" id="signOutBtn" style="display:none;">Sign out</button>
+        </div>
       </div>
       <div class="hint" id="cloudStatus">Not signed in.</div>
     </div>
   </div>
 
 
+  <div id="runtimeError" style="display:none;margin-bottom:12px;padding:10px;border:1px solid var(--stamp-red);color:var(--stamp-red);font-family:var(--font-mono);font-size:11px;"></div>
   <div class="hero">
     <div><span class="eyebrow">Kash · Training Ledger</span><h1>SESSION LOG</h1></div>
     <div class="streak-block"><div class="streak-num" id="streakNum">–</div><div class="streak-label">Day streak</div></div>
@@ -263,6 +279,10 @@
 
 <script>
 (function(){
+  window.addEventListener('error', function(e){
+    const el=document.getElementById('runtimeError');
+    if(el){ el.style.display='block'; el.textContent='App error: '+(e.message||'JavaScript error'); }
+  });
   const ENTRIES_KEY = 'training-ledger-entries';
   const WORKOUTS_KEY = 'training-ledger-workouts';
   let entries = [];
@@ -338,9 +358,6 @@
     };
   }
 
-  const githubSignInBtn = $('githubSignInBtn');
-  const githubSignOutBtn = $('githubSignOutBtn');
-
   function initSupabase(urlOverride='', keyOverride=''){
     const cfg = getConfig();
     const url = urlOverride || cfg.url;
@@ -358,9 +375,6 @@
       setCloudStatus('Supabase connected. Sign in to sync your data.');
       supabaseClient.auth.getSession().then(({data}) => {
         if(data && data.session) handleSignedIn(data.session.user);
-        if(window.location.hash && /access_token=|refresh_token=/.test(window.location.hash)){
-          history.replaceState(null, document.title, window.location.pathname + window.location.search);
-        }
       });
       supabaseClient.auth.onAuthStateChange((_event, session) => {
         if(session) handleSignedIn(session.user);
@@ -375,17 +389,21 @@
 
   async function handleSignedIn(user){
     currentUser = user;
-    if(githubSignInBtn) githubSignInBtn.style.display = 'none';
-    if(githubSignOutBtn) githubSignOutBtn.style.display = '';
-    setCloudStatus('Signed in as ' + (user.email || 'GitHub user') + '. Syncing…', 'ok');
+    $('signInBtn').style.display = 'none';
+    $('signUpBtn').style.display = 'none';
+    $('signOutBtn').style.display = '';
+    $('emailInput').value = user.email || '';
+    $('passwordInput').value = '';
+    setCloudStatus('Signed in as ' + (user.email || 'user') + '. Syncing…', 'ok');
     await syncLocalToCloud();
     await loadCloudData();
   }
 
   function handleSignedOut(){
     currentUser = null;
-    if(githubSignInBtn) githubSignInBtn.style.display = '';
-    if(githubSignOutBtn) githubSignOutBtn.style.display = 'none';
+    $('signInBtn').style.display = '';
+    $('signUpBtn').style.display = '';
+    $('signOutBtn').style.display = 'none';
     setCloudStatus(cloudReady ? 'Supabase connected. Sign in to sync your data.' : 'Not connected.');
     setStatus('ok');
   }
@@ -467,7 +485,7 @@
     localSaveWorkouts();
     if(!supabaseClient || !currentUser) return true;
     try{
-      const rows = workouts.map(name => ({user_id:currentUser.id, name}));
+      const rows = workouts.map(name => ({user_id: currentUser.id, name}));
       if(rows.length){
         const {error} = await supabaseClient.from('workouts').upsert(rows, {onConflict:'user_id,name'});
         if(error) throw error;
@@ -475,7 +493,7 @@
       setCloudStatus('Workout list saved to cloud.', 'ok');
       return true;
     }catch(e){
-      setCloudStatus('Could not save workout list: ' + (e.message || e), 'fail');
+      setCloudStatus('Workout saved locally; cloud sync failed: ' + (e.message || e), 'fail');
       return false;
     }
   }
@@ -489,19 +507,37 @@
   localLoad();
 
   // ---------- Workouts panel ----------
-  $('addWorkoutBtn').addEventListener('click', async () => {
+  // This handler is deliberately independent of Supabase so adding a workout
+  // always works locally, even when cloud authentication is unavailable.
+  function addWorkoutLocal(){
+    const input = $('newWorkoutInput');
+    const val = input.value.trim();
+    if(!val) { input.focus(); return; }
+    if(!workouts.some(w => w.toLowerCase() === val.toLowerCase())){
+      workouts.push(val);
+      workouts.sort((a,b)=>a.localeCompare(b));
+      localSaveWorkouts();
+      renderWorkoutChips();
+      renderExerciseSelect();
+    }
+    input.value = '';
+    input.focus();
+    if(supabaseClient && currentUser) saveWorkouts();
+  }
+
+  $('addWorkoutBtn').addEventListener('click', addWorkoutLocal);
+  $('newWorkoutInput').addEventListener('keydown', e => {
+    if(e.key === 'Enter') addWorkoutLocal();
+  });
+
+
+  $('addWorkoutBtn').addEventListener('click', () => {
     const val = $('newWorkoutInput').value.trim();
     if(!val) return;
-    if(workouts.some(w => w.toLowerCase() === val.toLowerCase())){
-      $('newWorkoutInput').value='';
-      return;
-    }
-    workouts.push(val);
-    workouts.sort((a,b)=>a.localeCompare(b));
+    if(workouts.some(w => w.toLowerCase() === val.toLowerCase())){ $('newWorkoutInput').value=''; return; }
+    workouts.push(val); workouts.sort((a,b)=>a.localeCompare(b));
     $('newWorkoutInput').value = '';
-    renderWorkoutChips();
-    renderExerciseSelect();
-    await saveWorkouts();
+    saveWorkouts(); renderWorkoutChips(); renderExerciseSelect();
   });
   $('newWorkoutInput').addEventListener('keydown', (e) => { if(e.key === 'Enter') $('addWorkoutBtn').click(); });
 
@@ -538,27 +574,27 @@
     initSupabase(url, key);
   });
 
-  // ---------- GitHub OAuth ----------
-  if(githubSignInBtn){
-    githubSignInBtn.addEventListener('click', async () => {
-      if(!supabaseClient){
-        setCloudStatus('Connect Supabase first.', 'fail');
-        return;
-      }
-      const redirectTo = window.location.origin + window.location.pathname;
-      const result = await supabaseClient.auth.signInWithOAuth({
-        provider: 'github',
-        options: { redirectTo }
-      });
-      if(result.error) setCloudStatus('GitHub sign-in failed: ' + result.error.message, 'fail');
-    });
-  }
+  $('signInBtn').addEventListener('click', async () => {
+    if(!supabaseClient) return;
+    const email=$('emailInput').value.trim(), password=$('passwordInput').value;
+    if(!email || !password){ setCloudStatus('Enter your email and password.', 'fail'); return; }
+    const {error}=await supabaseClient.auth.signInWithPassword({email,password});
+    if(error) setCloudStatus(error.message,'fail');
+  });
 
-  if(githubSignOutBtn){
-    githubSignOutBtn.addEventListener('click', async () => {
-      if(supabaseClient) await supabaseClient.auth.signOut();
-    });
-  }
+  $('signUpBtn').addEventListener('click', async () => {
+    if(!supabaseClient) return;
+    const email=$('emailInput').value.trim(), password=$('passwordInput').value;
+    if(!email || password.length < 6){ setCloudStatus('Enter an email and a password of at least 6 characters.','fail'); return; }
+    const {data,error}=await supabaseClient.auth.signUp({email,password});
+    if(error){ setCloudStatus(error.message,'fail'); return; }
+    if(data.session) setCloudStatus('Account created and signed in.','ok');
+    else setCloudStatus('Account created. Check your email if confirmation is enabled in Supabase.','ok');
+  });
+
+  $('signOutBtn').addEventListener('click', async () => {
+    if(supabaseClient) await supabaseClient.auth.signOut();
+  });
 
   // ---------- Add entry ----------
   $('logBtn').addEventListener('click', async () => {
@@ -867,12 +903,16 @@
     if($('barsContent').style.display !== 'none') renderBars();
   }
 
-  loadAll();
+  try{
+    loadAll();
+    document.querySelector('[data-preset="today"]').classList.add('active-preset');
+  }catch(e){
+    console.error('Training Ledger startup error:', e);
+  }
   const savedCfg = getConfig();
   if(savedCfg.url) $('supabaseUrlInput').value = savedCfg.url;
   if(savedCfg.key) $('supabaseKeyInput').value = savedCfg.key;
-  initSupabase();
-  document.querySelector('[data-preset="today"]').classList.add('active-preset');
+  try{ initSupabase(); }catch(e){ console.error('Supabase init error:', e); }
 })();
 </script>
 </body>
