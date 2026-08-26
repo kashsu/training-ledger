@@ -1,0 +1,872 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Training Ledger</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;500;600&family=Work+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="./config.js"></script>
+<style>
+  :root{
+    --paper:#1B1D19; --panel:#232620; --panel-2:#292C24; --ink:#EDE7D9;
+    --muted:#9C9788; --muted-2:#6E6B5E; --amber:#E8A33D; --amber-dim:#8A6221;
+    --teal:#4FA69C; --stamp-red:#C1443B;
+    --grid-line:rgba(237,231,217,0.09); --grid-line-strong:rgba(237,231,217,0.16);
+    --font-display:'Bebas Neue',sans-serif; --font-body:'Work Sans',sans-serif; --font-mono:'IBM Plex Mono',monospace;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:
+      linear-gradient(var(--grid-line) 1px, transparent 1px) 0 0/100% 32px,
+      linear-gradient(90deg, var(--grid-line) 1px, transparent 1px) 0 0/32px 100%,
+      var(--paper);
+    color:var(--ink); font-family:var(--font-body); padding:0 0 64px 0; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:960px;margin:0 auto;padding:28px 20px 0;}
+  .hero{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid var(--grid-line-strong);padding-bottom:18px;margin-bottom:26px;flex-wrap:wrap;gap:16px;}
+  .hero h1{font-family:var(--font-display);font-size:clamp(40px,7vw,64px);letter-spacing:1px;margin:0;line-height:0.9;color:var(--ink);}
+  .hero .eyebrow{font-family:var(--font-mono);font-size:11px;letter-spacing:3px;color:var(--amber);text-transform:uppercase;margin-bottom:6px;display:block;}
+  .streak-block{text-align:right;}
+  .streak-num{font-family:var(--font-display);font-size:56px;color:var(--amber);line-height:0.85;}
+  .streak-label{font-family:var(--font-mono);font-size:11px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;}
+
+  .panel{background:var(--panel);border:1px solid var(--grid-line-strong);border-radius:2px;padding:20px;margin-bottom:22px;position:relative;}
+  .panel-title-row{display:flex;align-items:center;gap:12px;margin-bottom:16px;}
+  .panel-title{font-family:var(--font-mono);font-size:11px;letter-spacing:2.5px;text-transform:uppercase;color:var(--muted);margin:0;}
+  .panel-title-row::after{content:"";flex:1;height:1px;background:var(--grid-line-strong);}
+
+  .form-row{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;}
+  .field{display:flex;flex-direction:column;gap:6px;flex:1;min-width:130px;}
+  .field label{font-family:var(--font-mono);font-size:10px;letter-spacing:1.5px;color:var(--muted);text-transform:uppercase;}
+  input,select{background:var(--paper);border:1px solid var(--grid-line-strong);color:var(--ink);font-family:var(--font-body);font-size:14px;padding:10px;border-radius:2px;outline:none;width:100%;}
+  input:focus,select:focus{border-color:var(--amber);}
+  input[type="date"]{font-family:var(--font-mono);}
+  select{appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6'><path d='M0 0L5 6L10 0' fill='%239C9788'/></svg>");background-repeat:no-repeat;background-position:right 12px center;padding-right:28px;}
+  .type-toggle{display:flex;border:1px solid var(--grid-line-strong);border-radius:2px;overflow:hidden;}
+  .type-toggle button{flex:1;background:var(--paper);color:var(--muted);border:none;font-family:var(--font-mono);font-size:12px;letter-spacing:1px;padding:10px 8px;cursor:pointer;text-transform:uppercase;}
+  .type-toggle button.active{background:var(--amber-dim);color:var(--ink);}
+  .type-toggle.mini button{padding:6px 8px;font-size:10px;}
+
+  .btn{background:var(--amber);color:#1B1D19;border:none;font-family:var(--font-mono);font-weight:600;font-size:12px;letter-spacing:1.5px;text-transform:uppercase;padding:11px 20px;border-radius:2px;cursor:pointer;white-space:nowrap;}
+  .btn:hover{background:#f0b459;}
+  .btn.secondary{background:transparent;color:var(--ink);border:1px solid var(--grid-line-strong);}
+  .btn.secondary:hover{border-color:var(--muted);}
+  .btn.secondary.active-preset{border-color:var(--amber);color:var(--amber);}
+  .btn.danger{background:transparent;color:var(--stamp-red);border:1px solid var(--stamp-red);}
+  .btn.danger:hover{background:rgba(193,68,59,0.1);}
+  .btn.small{padding:6px 12px;font-size:10px;}
+  .btn:disabled{opacity:0.35;cursor:not-allowed;}
+  .hint{font-family:var(--font-mono);font-size:11px;color:var(--muted-2);margin-top:10px;}
+  #cloudStatus.ok{color:var(--teal);} #cloudStatus.fail{color:var(--stamp-red);}
+
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-bottom:22px;}
+  .stat-card{background:var(--panel);border:1px solid var(--grid-line-strong);padding:16px;border-radius:2px;}
+  .stat-num{font-family:var(--font-display);font-size:34px;color:var(--teal);line-height:1;}
+  .stat-num.alert{color:var(--stamp-red);}
+  .stat-label{font-family:var(--font-mono);font-size:10px;letter-spacing:1.5px;color:var(--muted);text-transform:uppercase;margin-top:6px;}
+
+  .preset-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;}
+  .range-row{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin-bottom:16px;}
+  .range-label{font-family:var(--font-mono);font-size:12px;color:var(--amber);margin-bottom:14px;}
+
+  .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;}
+  .cal-dow{font-family:var(--font-mono);font-size:9px;color:var(--muted-2);text-align:center;letter-spacing:1px;}
+  .cal-cell{aspect-ratio:1;border-radius:2px;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:10px;position:relative;cursor:pointer;}
+  .cal-cell.pad{background:transparent;cursor:default;}
+  .cal-cell.logged{background:rgba(232,163,61,0.16);border:1.5px solid var(--amber);color:var(--amber);transform:rotate(-2deg);}
+  .cal-cell.missed{background:transparent;border:1px dashed var(--stamp-red);color:var(--stamp-red);opacity:0.65;}
+  .cal-cell.future{background:transparent;border:1px dashed var(--grid-line-strong);color:var(--muted-2);}
+  .cal-cell.today{outline:2px solid var(--teal);outline-offset:1px;}
+  .cal-cell.selected{box-shadow:0 0 0 2px var(--amber) inset;}
+  .cal-cell:hover{filter:brightness(1.25);}
+  .cal-legend{display:flex;gap:18px;margin-top:14px;flex-wrap:wrap;}
+  .cal-legend span{font-family:var(--font-mono);font-size:10px;color:var(--muted);display:flex;align-items:center;gap:6px;}
+  .swatch{width:10px;height:10px;border-radius:2px;display:inline-block;}
+  .cal-hint{font-family:var(--font-mono);font-size:10px;color:var(--muted-2);margin-top:10px;}
+
+  .bars{display:flex;align-items:flex-end;gap:5px;height:110px;margin-top:6px;}
+  .bar-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;height:100%;justify-content:flex-end;}
+  .bar{width:100%;background:var(--teal);border-radius:1px 1px 0 0;min-height:2px;}
+  .bar-col .bar-day{font-family:var(--font-mono);font-size:8px;color:var(--muted-2);}
+
+  .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px;}
+  .chip{display:flex;align-items:center;gap:8px;background:var(--panel-2);border:1px solid var(--grid-line-strong);border-radius:2px;padding:6px 6px 6px 12px;font-family:var(--font-mono);font-size:12px;color:var(--ink);}
+  .chip button{background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;line-height:1;padding:2px 4px;}
+  .chip button:hover{color:var(--stamp-red);}
+  .no-workouts{font-family:var(--font-mono);font-size:11px;color:var(--muted-2);margin-top:10px;}
+
+  .table-scroll{overflow-x:auto;border:1px solid var(--grid-line-strong);}
+  table{border-collapse:collapse;width:100%;font-family:var(--font-mono);font-size:12.5px;}
+  thead th{background:var(--panel-2);color:var(--amber);text-align:left;padding:10px 12px;border-bottom:1.5px solid var(--grid-line-strong);white-space:nowrap;text-transform:uppercase;letter-spacing:0.5px;font-size:11px;}
+  tbody td{padding:8px 12px;border-bottom:1px solid var(--grid-line);white-space:nowrap;color:var(--ink);vertical-align:middle;}
+  tbody td.date-col{color:var(--muted);font-weight:600;}
+  tbody tr:hover{background:rgba(237,231,217,0.03);}
+  tbody tr.totals-row{background:rgba(237,231,217,0.04);font-weight:600;}
+  tbody tr.totals-row td{color:var(--amber);}
+  .empty-state{padding:36px 20px;text-align:center;color:var(--muted-2);font-family:var(--font-mono);font-size:12px;}
+  .row-actions{display:flex;gap:6px;}
+  .row-actions button{background:none;border:1px solid var(--grid-line-strong);color:var(--muted);font-family:var(--font-mono);font-size:10px;letter-spacing:1px;text-transform:uppercase;padding:5px 9px;border-radius:2px;cursor:pointer;}
+  .row-actions button:hover{color:var(--ink);border-color:var(--muted);}
+  .row-actions button.del:hover{color:var(--stamp-red);border-color:var(--stamp-red);}
+  .row-actions button.save{color:var(--amber);border-color:var(--amber-dim);}
+  tbody td input[type="number"], tbody td input[type="date"], tbody td select{padding:6px 8px;font-size:12px;min-width:90px;}
+  .cat-pill{font-size:10px;letter-spacing:1px;text-transform:uppercase;padding:3px 8px;border-radius:10px;border:1px solid var(--grid-line-strong);color:var(--muted);}
+  .cat-pill.reps{color:var(--amber);border-color:var(--amber-dim);}
+  .cat-pill.mins{color:var(--teal);border-color:var(--teal);}
+
+  .table-toolbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px;}
+  .table-toolbar .left{display:flex;align-items:center;gap:10px;font-family:var(--font-mono);font-size:11px;color:var(--muted);}
+  .top-actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end;margin-bottom:18px;}
+
+  @media (max-width:600px){ .hero{flex-direction:column;align-items:flex-start;} .streak-block{text-align:left;} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="panel" id="cloudPanel">
+    <div class="panel-title-row"><div class="panel-title">Cloud sync</div></div>
+    <div id="setupArea">
+      <div class="hint" style="margin-top:0;margin-bottom:12px;">
+        Connect this tracker to Supabase once. Your workouts will then sync across devices.
+      </div>
+      <div class="form-row">
+        <div class="field" style="min-width:260px;">
+          <label for="supabaseUrlInput">Supabase project URL</label>
+          <input id="supabaseUrlInput" type="url" placeholder="https://your-project.supabase.co">
+        </div>
+        <div class="field" style="min-width:260px;">
+          <label for="supabaseKeyInput">Supabase publishable key</label>
+          <input id="supabaseKeyInput" type="password" placeholder="sb_publishable_...">
+        </div>
+        <div class="field" style="flex:0;">
+          <label>&nbsp;</label><button class="btn" id="connectSupabaseBtn">Connect</button>
+        </div>
+      </div>
+      <div class="hint">Use the publishable/anon key only. Never put a Supabase service-role key in this page.</div>
+    </div>
+    <div id="authArea" style="display:none;">
+      <div class="form-row">
+        <div class="field" style="min-width:220px;">
+          <label for="emailInput">Email</label>
+          <input id="emailInput" type="email" autocomplete="email" placeholder="you@example.com">
+        </div>
+        <div class="field" style="min-width:180px;">
+          <label for="passwordInput">Password</label>
+          <input id="passwordInput" type="password" autocomplete="current-password" placeholder="Minimum 6 characters">
+        </div>
+        <div class="field" style="flex:0;">
+          <label>&nbsp;</label><button class="btn" id="signInBtn">Sign in</button>
+        </div>
+        <div class="field" style="flex:0;">
+          <label>&nbsp;</label><button class="btn secondary" id="signUpBtn">Create account</button>
+        </div>
+        <div class="field" style="flex:0;">
+          <label>&nbsp;</label><button class="btn secondary" id="signOutBtn" style="display:none;">Sign out</button>
+        </div>
+      </div>
+      <div class="hint" id="cloudStatus">Not signed in.</div>
+    </div>
+  </div>
+
+
+  <div class="hero">
+    <div><span class="eyebrow">Kash · Training Ledger</span><h1>SESSION LOG</h1></div>
+    <div class="streak-block"><div class="streak-num" id="streakNum">–</div><div class="streak-label">Day streak</div></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title-row"><div class="panel-title">Workouts</div></div>
+    <div class="form-row">
+      <div class="field" style="flex:2;min-width:180px;">
+        <label for="newWorkoutInput">Add a workout</label>
+        <input type="text" id="newWorkoutInput" placeholder="e.g. Push-ups" autocomplete="off">
+      </div>
+      <div class="field" style="flex:0;"><label>&nbsp;</label><button class="btn" id="addWorkoutBtn">Add workout</button></div>
+    </div>
+    <div class="chips" id="workoutChips"></div>
+    <div class="no-workouts" id="noWorkoutsHint" style="display:none;">No workouts saved yet — add one above, then select it below to log sessions without typos.</div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title-row"><div class="panel-title">Log a session</div></div>
+    <div class="form-row">
+      <div class="field" style="flex:1.4;min-width:160px;">
+        <label for="exerciseSelect">Workout</label>
+        <select id="exerciseSelect"><option value="">Select a workout…</option></select>
+      </div>
+      <div class="field" style="min-width:110px;">
+        <label>Measured in</label>
+        <div class="type-toggle"><button type="button" id="typeReps" class="active">Reps</button><button type="button" id="typeMins">Mins</button></div>
+      </div>
+      <div class="field" style="min-width:90px;"><label for="valueInput" id="valueLabel">Reps</label><input type="number" id="valueInput" min="0" step="1" placeholder="0"></div>
+      <div class="field" style="min-width:150px;"><label for="dateInput">Date</label><input type="date" id="dateInput"></div>
+      <div class="field" style="flex:0;"><label>&nbsp;</label><button class="btn" id="logBtn">Log it</button></div>
+    </div>
+    <div class="hint" id="statusHint">Saved sessions stay in this browser, tied to this file, even after you close the tab.</div>
+  </div>
+
+  <div class="stats" id="statsRow"></div>
+
+  <!-- Day / range breakdown -->
+  <div class="panel" id="breakdownPanel">
+    <div class="panel-title-row"><div class="panel-title">Breakdown by day or range</div></div>
+    <div class="preset-row">
+      <button class="btn secondary small" data-preset="today">Today</button>
+      <button class="btn secondary small" data-preset="yesterday">Yesterday</button>
+      <button class="btn secondary small" data-preset="7">Last 7 days</button>
+      <button class="btn secondary small" data-preset="30">Last 30 days</button>
+      <button class="btn secondary small" data-preset="month">This month</button>
+      <button class="btn secondary small" data-preset="all">All time</button>
+    </div>
+    <div class="range-row">
+      <div class="field" style="min-width:150px;"><label for="rangeFrom">From</label><input type="date" id="rangeFrom"></div>
+      <div class="field" style="min-width:150px;"><label for="rangeTo">To</label><input type="date" id="rangeTo"></div>
+      <div class="field" style="flex:0;"><label>&nbsp;</label><button class="btn secondary small" id="applyRangeBtn">Apply</button></div>
+    </div>
+    <div class="range-label" id="rangeLabel"></div>
+    <div class="table-scroll">
+      <table id="breakdownTable">
+        <thead><tr><th>Workout</th><th>Sessions</th><th>Total reps</th><th>Total mins</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title-row"><div class="panel-title">Calendar</div><button class="btn secondary small" id="toggleCalBtn">Show calendar</button></div>
+    <div id="calContent" style="display:none;">
+      <div class="cal-grid" id="calGrid"></div>
+      <div class="cal-legend">
+        <span><span class="swatch" style="background:rgba(232,163,61,0.35);border:1.5px solid var(--amber);"></span>Logged</span>
+        <span><span class="swatch" style="background:transparent;border:1px dashed var(--stamp-red);"></span>Missed</span>
+        <span><span class="swatch" style="background:transparent;border:1px dashed var(--grid-line-strong);"></span>Upcoming</span>
+      </div>
+      <div class="cal-hint">Click any day to see its breakdown above.</div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title-row"><div class="panel-title">Last 14 days</div><button class="btn secondary small" id="toggleBarsBtn">Show last 14 days</button></div>
+    <div id="barsContent" style="display:none;"><div class="bars" id="barsChart"></div></div>
+  </div>
+
+  <div class="panel">
+    <div class="top-actions">
+      <input type="file" id="importFile" accept=".xlsx,.xls" style="display:none;">
+      <button class="btn secondary" id="importBtn">Import from Excel</button>
+      <button class="btn secondary" id="exportBtn">Export to Excel (.xlsx)</button>
+      <button class="btn danger" id="clearBtn">Clear all data</button>
+    </div>
+    <div class="panel-title-row"><div class="panel-title">Session log</div></div>
+    <div class="table-toolbar">
+      <div class="left"><label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" id="selectAllChk" style="width:auto;"> Select all</label></div>
+      <button class="btn danger small" id="deleteSelectedBtn" disabled>Delete selected (0)</button>
+    </div>
+    <div class="table-scroll">
+      <table id="ledgerTable">
+        <thead><tr><th></th><th>Date</th><th>Workout</th><th>Category</th><th>Amount</th><th></th></tr></thead>
+        <tbody><tr><td class="empty-state" colspan="6">Loading…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<script>
+(function(){
+  const ENTRIES_KEY = 'training-ledger-entries';
+  const WORKOUTS_KEY = 'training-ledger-workouts';
+  let entries = [];
+  let workouts = [];
+  let selectedType = 'reps';
+  let selectedIds = new Set();
+  let editingId = null;
+  let editState = {};
+  let rangeFrom, rangeTo;
+
+  const $ = (id) => document.getElementById(id);
+  const isoOf = (d) => d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  const todayStr = () => isoOf(new Date());
+  const fmtDateLabel = (iso) => { const [y,m,d]=iso.split('-').map(Number); return new Date(y,m-1,d).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'2-digit'}); };
+  const fmtDateFull = (iso) => { const [y,m,d]=iso.split('-').map(Number); return new Date(y,m-1,d).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}); };
+  const escapeHtml = (s) => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+  $('dateInput').value = todayStr();
+  rangeFrom = todayStr(); rangeTo = todayStr();
+  $('rangeFrom').value = rangeFrom; $('rangeTo').value = rangeTo;
+
+  // ---------- Storage / Supabase cloud sync ----------
+  const LOCAL_ENTRIES_KEY = 'training-ledger-entries';
+  const LOCAL_WORKOUTS_KEY = 'training-ledger-workouts';
+  let supabaseClient = null;
+  let currentUser = null;
+  let cloudReady = false;
+
+  function localLoad(){
+    try{ entries = JSON.parse(localStorage.getItem(LOCAL_ENTRIES_KEY) || '[]'); }catch(e){ entries = []; }
+    try{ workouts = JSON.parse(localStorage.getItem(LOCAL_WORKOUTS_KEY) || '[]'); }catch(e){ workouts = []; }
+    if(workouts.length === 0 && entries.length > 0){
+      workouts = Array.from(new Set(entries.map(e => e.exercise))).sort((a,b)=>a.localeCompare(b));
+      localSaveWorkouts();
+    }
+  }
+
+  function localSaveEntries(){
+    try{ localStorage.setItem(LOCAL_ENTRIES_KEY, JSON.stringify(entries)); }catch(e){}
+  }
+  function localSaveWorkouts(){
+    try{ localStorage.setItem(LOCAL_WORKOUTS_KEY, JSON.stringify(workouts)); }catch(e){}
+  }
+
+  function setCloudStatus(text, state=''){
+    const el = $('cloudStatus');
+    if(el){ el.textContent = text; el.className = 'hint ' + state; }
+  }
+
+  function setStatus(state){
+    const el = $('statusHint');
+    if(state === 'fail'){
+      el.textContent = 'Could not save to cloud. Check your connection and Supabase setup.';
+      el.style.color = 'var(--stamp-red)';
+    } else if(cloudReady && currentUser){
+      el.textContent = 'Saved to your cloud account. Available on your other devices after sign-in.';
+      el.style.color = 'var(--teal)';
+    } else {
+      el.textContent = 'Local mode: data is saved only in this browser until cloud sync is connected.';
+      el.style.color = '';
+    }
+  }
+
+  function saveConfig(url, key){
+    localStorage.setItem('training-ledger-supabase-url', url);
+    localStorage.setItem('training-ledger-supabase-key', key);
+  }
+
+  function getConfig(){
+    return {
+      url: window.SUPABASE_URL || localStorage.getItem('training-ledger-supabase-url') || '',
+      key: window.SUPABASE_PUBLISHABLE_KEY || localStorage.getItem('training-ledger-supabase-key') || ''
+    };
+  }
+
+  function initSupabase(){
+    const cfg = getConfig();
+    if(!cfg.url || !cfg.key || !window.supabase) return false;
+    try{
+      supabaseClient = window.supabase.createClient(cfg.url, cfg.key);
+      cloudReady = true;
+      $('setupArea').style.display = 'none';
+      $('authArea').style.display = 'block';
+      setCloudStatus('Supabase connected. Sign in to sync your data.');
+      supabaseClient.auth.getSession().then(({data}) => {
+        if(data && data.session) handleSignedIn(data.session.user);
+      });
+      supabaseClient.auth.onAuthStateChange((_event, session) => {
+        if(session) handleSignedIn(session.user);
+        else handleSignedOut();
+      });
+      return true;
+    }catch(e){
+      setCloudStatus('Could not initialize Supabase: ' + e.message, 'fail');
+      return false;
+    }
+  }
+
+  async function handleSignedIn(user){
+    currentUser = user;
+    $('signInBtn').style.display = 'none';
+    $('signUpBtn').style.display = 'none';
+    $('signOutBtn').style.display = '';
+    $('emailInput').value = user.email || '';
+    $('passwordInput').value = '';
+    setCloudStatus('Signed in as ' + (user.email || 'user') + '. Syncing…', 'ok');
+    await syncLocalToCloud();
+    await loadCloudData();
+  }
+
+  function handleSignedOut(){
+    currentUser = null;
+    $('signInBtn').style.display = '';
+    $('signUpBtn').style.display = '';
+    $('signOutBtn').style.display = 'none';
+    setCloudStatus(cloudReady ? 'Supabase connected. Sign in to sync your data.' : 'Not connected.');
+    setStatus('ok');
+  }
+
+  async function syncLocalToCloud(){
+    if(!supabaseClient || !currentUser) return;
+    try{
+      const localWorkouts = [...workouts];
+      if(localWorkouts.length){
+        const rows = localWorkouts.map(name => ({user_id: currentUser.id, name}));
+        const {error} = await supabaseClient.from('workouts').upsert(rows, {onConflict:'user_id,name'});
+        if(error) throw error;
+      }
+
+      if(entries.length){
+        const rows = entries.map(e => ({
+          id: e.id,
+          user_id: currentUser.id,
+          date: e.date,
+          exercise: e.exercise,
+          type: e.type,
+          value: e.value
+        }));
+        const {error} = await supabaseClient.from('training_entries').upsert(rows, {onConflict:'id'});
+        if(error) throw error;
+      }
+      setCloudStatus('Cloud sync complete.', 'ok');
+    }catch(e){
+      setCloudStatus('Cloud sync failed: ' + e.message, 'fail');
+      setStatus('fail');
+    }
+  }
+
+  async function loadCloudData(){
+    if(!supabaseClient || !currentUser) return;
+    try{
+      const [{data: ws, error: we}, {data: es, error: ee}] = await Promise.all([
+        supabaseClient.from('workouts').select('name').order('name'),
+        supabaseClient.from('training_entries').select('id,date,exercise,type,value').order('date',{ascending:false})
+      ]);
+      if(we) throw we;
+      if(ee) throw ee;
+      workouts = (ws || []).map(w => w.name);
+      entries = (es || []).map(e => ({id:e.id,date:e.date,exercise:e.exercise,type:e.type,value:Number(e.value)}));
+      localSaveWorkouts();
+      localSaveEntries();
+      renderAll();
+      setStatus('ok');
+      setCloudStatus('Cloud data loaded.', 'ok');
+    }catch(e){
+      setCloudStatus('Could not load cloud data: ' + e.message, 'fail');
+      setStatus('fail');
+    }
+  }
+
+  async function saveEntries(){
+    localSaveEntries();
+    if(!supabaseClient || !currentUser){ setStatus('ok'); return; }
+    try{
+      const latest = entries[entries.length - 1];
+      if(latest){
+        const {error} = await supabaseClient.from('training_entries').upsert({
+          id: latest.id, user_id: currentUser.id, date: latest.date,
+          exercise: latest.exercise, type: latest.type, value: latest.value
+        }, {onConflict:'id'});
+        if(error) throw error;
+      }
+      setStatus('ok');
+    }catch(e){ setStatus('fail'); }
+  }
+
+  async function deleteCloudEntry(id){
+    if(!supabaseClient || !currentUser) return;
+    const {error} = await supabaseClient.from('training_entries').delete().eq('id', id);
+    if(error) throw error;
+  }
+
+  async function saveWorkouts(){
+    localSaveWorkouts();
+    if(!supabaseClient || !currentUser) return;
+    try{
+      const rows = workouts.map(name => ({user_id:currentUser.id, name}));
+      if(rows.length){
+        const {error} = await supabaseClient.from('workouts').upsert(rows, {onConflict:'user_id,name'});
+        if(error) throw error;
+      }
+    }catch(e){ setCloudStatus('Could not save workout list: ' + e.message, 'fail'); }
+  }
+
+  async function removeCloudWorkout(name){
+    if(!supabaseClient || !currentUser) return;
+    const {error} = await supabaseClient.from('workouts').delete().eq('user_id',currentUser.id).eq('name',name);
+    if(error) throw error;
+  }
+
+  localLoad();
+
+  // ---------- Workouts panel ----------
+  $('addWorkoutBtn').addEventListener('click', () => {
+    const val = $('newWorkoutInput').value.trim();
+    if(!val) return;
+    if(workouts.some(w => w.toLowerCase() === val.toLowerCase())){ $('newWorkoutInput').value=''; return; }
+    workouts.push(val); workouts.sort((a,b)=>a.localeCompare(b));
+    $('newWorkoutInput').value = '';
+    saveWorkouts(); renderWorkoutChips(); renderExerciseSelect();
+  });
+  $('newWorkoutInput').addEventListener('keydown', (e) => { if(e.key === 'Enter') $('addWorkoutBtn').click(); });
+
+  async function removeWorkout(name){
+    workouts = workouts.filter(w => w !== name);
+    localSaveWorkouts();
+    try{ await removeCloudWorkout(name); }catch(e){ setCloudStatus('Could not remove workout from cloud: '+e.message,'fail'); }
+    renderWorkoutChips(); renderExerciseSelect();
+  }
+  function renderWorkoutChips(){
+    $('workoutChips').innerHTML = workouts.map(w => `<div class="chip">${escapeHtml(w)}<button data-name="${escapeHtml(w)}" title="Remove from list">×</button></div>`).join('');
+    $('workoutChips').querySelectorAll('button').forEach(btn => btn.addEventListener('click', () => removeWorkout(btn.getAttribute('data-name'))));
+    $('noWorkoutsHint').style.display = workouts.length === 0 ? 'block' : 'none';
+  }
+  function renderExerciseSelect(){
+    const sel = $('exerciseSelect'); const current = sel.value;
+    sel.innerHTML = '<option value="">Select a workout…</option>' + workouts.map(w => `<option value="${escapeHtml(w)}">${escapeHtml(w)}</option>`).join('');
+    if(workouts.includes(current)) sel.value = current;
+  }
+
+  // ---------- Type toggle ----------
+  $('typeReps').addEventListener('click', () => { selectedType='reps'; $('typeReps').classList.add('active'); $('typeMins').classList.remove('active'); $('valueLabel').textContent='Reps'; });
+  $('typeMins').addEventListener('click', () => { selectedType='mins'; $('typeMins').classList.add('active'); $('typeReps').classList.remove('active'); $('valueLabel').textContent='Minutes'; });
+
+
+  $('connectSupabaseBtn').addEventListener('click', () => {
+    const url = $('supabaseUrlInput').value.trim();
+    const key = $('supabaseKeyInput').value.trim();
+    if(!url || !key){ setCloudStatus('Enter both Supabase values.', 'fail'); return; }
+    saveConfig(url, key);
+    if(!initSupabase()) setCloudStatus('Connection failed. Check the URL and publishable key.', 'fail');
+  });
+
+  $('signInBtn').addEventListener('click', async () => {
+    if(!supabaseClient) return;
+    const email=$('emailInput').value.trim(), password=$('passwordInput').value;
+    if(!email || !password){ setCloudStatus('Enter your email and password.', 'fail'); return; }
+    const {error}=await supabaseClient.auth.signInWithPassword({email,password});
+    if(error) setCloudStatus(error.message,'fail');
+  });
+
+  $('signUpBtn').addEventListener('click', async () => {
+    if(!supabaseClient) return;
+    const email=$('emailInput').value.trim(), password=$('passwordInput').value;
+    if(!email || password.length < 6){ setCloudStatus('Enter an email and a password of at least 6 characters.','fail'); return; }
+    const {data,error}=await supabaseClient.auth.signUp({email,password});
+    if(error){ setCloudStatus(error.message,'fail'); return; }
+    if(data.session) setCloudStatus('Account created and signed in.','ok');
+    else setCloudStatus('Account created. Check your email if confirmation is enabled in Supabase.','ok');
+  });
+
+  $('signOutBtn').addEventListener('click', async () => {
+    if(supabaseClient) await supabaseClient.auth.signOut();
+  });
+
+  // ---------- Add entry ----------
+  $('logBtn').addEventListener('click', async () => {
+    const exercise = $('exerciseSelect').value;
+    const value = parseFloat($('valueInput').value);
+    const date = $('dateInput').value || todayStr();
+    if(!exercise){ $('exerciseSelect').focus(); return; }
+    if(!value || value <= 0){ $('valueInput').focus(); return; }
+    entries.push({ id: Date.now()+'-'+Math.random().toString(36).slice(2,7), date, exercise, type: selectedType, value });
+    $('valueInput').value = '';
+    await saveEntries(); renderAll();
+  });
+
+  // ---------- Collapsibles ----------
+  $('toggleCalBtn').addEventListener('click', () => {
+    const open = $('calContent').style.display !== 'none';
+    $('calContent').style.display = open ? 'none' : 'block';
+    $('toggleCalBtn').textContent = open ? 'Show calendar' : 'Hide calendar';
+    if(!open) renderCalendar();
+  });
+  $('toggleBarsBtn').addEventListener('click', () => {
+    const open = $('barsContent').style.display !== 'none';
+    $('barsContent').style.display = open ? 'none' : 'block';
+    $('toggleBarsBtn').textContent = open ? 'Show last 14 days' : 'Hide last 14 days';
+    if(!open) renderBars();
+  });
+
+  // ---------- Clear / import / export ----------
+  $('clearBtn').addEventListener('click', async () => {
+    if(!confirm('This will permanently delete every logged session (workout list stays). Continue?')) return;
+    entries = []; selectedIds.clear(); localSaveEntries();
+    if(supabaseClient && currentUser){ try{ const {error}=await supabaseClient.from('training_entries').delete().eq('user_id',currentUser.id); if(error) throw error; }catch(e){ setCloudStatus('Could not clear cloud data: '+e.message,'fail'); } }
+    renderAll();
+  });
+
+  $('importBtn').addEventListener('click', () => $('importFile').click());
+  $('importFile').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      try{
+        const wb = XLSX.read(evt.target.result, {type:'binary'});
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws);
+        let added = 0;
+        rows.forEach(r => {
+          const date = normalizeDate(r.Date);
+          const exercise = (r.Workout || r.Exercise || '').toString().trim();
+          const catRaw = (r.Category || r.Type || '').toString().toLowerCase();
+          const type = catRaw.startsWith('rep') ? 'reps' : (catRaw.startsWith('min') ? 'mins' : null);
+          const value = parseFloat(r.Amount || r.Value);
+          if(!date || !exercise || !type || !value || value<=0) return;
+          entries.push({ id: Date.now()+'-'+Math.random().toString(36).slice(2,7)+added, date, exercise, type, value });
+          if(!workouts.some(w=>w.toLowerCase()===exercise.toLowerCase())) workouts.push(exercise);
+          added++;
+        });
+        workouts.sort((a,b)=>a.localeCompare(b));
+        localSaveEntries(); localSaveWorkouts();
+        if(supabaseClient && currentUser){ await syncLocalToCloud(); await loadCloudData(); }
+        renderAll();
+        alert(added + ' session(s) imported.');
+      }catch(err){ alert('Could not read that file. Make sure it is an .xlsx exported from this app.'); }
+      $('importFile').value = '';
+    };
+    reader.readAsBinaryString(file);
+  });
+  function normalizeDate(val){
+    if(!val) return null;
+    if(typeof val === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(val)) return val;
+    if(val instanceof Date) return isoOf(val);
+    if(typeof val === 'number'){ const d = XLSX.SSF.parse_date_code(val); if(d) return `${d.y}-${String(d.m).padStart(2,'0')}-${String(d.d).padStart(2,'0')}`; }
+    const parsed = new Date(val);
+    return isNaN(parsed) ? null : isoOf(parsed);
+  }
+
+  $('exportBtn').addEventListener('click', () => {
+    if(entries.length === 0){ alert('No sessions to export yet.'); return; }
+    const rows = sortedEntriesDesc().slice().reverse().map(en => ({
+      Date: en.date, Workout: en.exercise, Category: en.type==='reps'?'Reps':'Minutes', Amount: en.value
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Training Log');
+    XLSX.writeFile(wb, 'training-log.xlsx');
+  });
+
+  // ---------- Bulk select / delete ----------
+  $('selectAllChk').addEventListener('change', (e) => {
+    if(e.target.checked) entries.forEach(en => selectedIds.add(en.id)); else selectedIds.clear();
+    renderTable();
+  });
+  $('deleteSelectedBtn').addEventListener('click', async () => {
+    if(selectedIds.size === 0) return;
+    if(!confirm(`Delete ${selectedIds.size} selected session(s)? This can't be undone.`)) return;
+    const ids = [...selectedIds];
+    entries = entries.filter(en => !selectedIds.has(en.id));
+    selectedIds.clear(); localSaveEntries();
+    if(supabaseClient && currentUser){ try{ const {error}=await supabaseClient.from('training_entries').delete().eq('user_id',currentUser.id).in('id',ids); if(error) throw error; }catch(e){ setCloudStatus('Could not delete selected cloud data: '+e.message,'fail'); } }
+    renderAll();
+  });
+
+  // ---------- Derived data ----------
+  function uniqueExercises(){ return Array.from(new Set(entries.map(e => e.exercise))).sort((a,b)=>a.localeCompare(b)); }
+  function loggedDateSet(){ return new Set(entries.map(e => e.date)); }
+  function sortedEntriesDesc(){ return entries.slice().sort((a,b) => a.date!==b.date ? (a.date<b.date?1:-1) : (a.id<b.id?1:-1)); }
+
+  function computeStreaks(){
+    const dset = loggedDateSet();
+    let current = 0, cursor = new Date();
+    if(!dset.has(todayStr())) cursor.setDate(cursor.getDate()-1);
+    while(true){ const key = isoOf(cursor); if(dset.has(key)){ current++; cursor.setDate(cursor.getDate()-1);} else break; }
+    const sortedDates = Array.from(dset).sort();
+    let longest=0, run=0, prev=null;
+    for(const ds of sortedDates){
+      if(prev){ const diff = Math.round((new Date(ds+'T00:00:00')-new Date(prev+'T00:00:00'))/86400000); run = diff===1?run+1:1; } else run=1;
+      longest = Math.max(longest, run); prev = ds;
+    }
+    return {current, longest};
+  }
+
+  // ---------- Render: stats ----------
+  function renderStats(){
+    const {current, longest} = computeStreaks();
+    $('streakNum').textContent = current;
+    const dset = loggedDateSet();
+    let missedLast7 = 0;
+    for(let i=1;i<=7;i++){ const d=new Date(); d.setDate(d.getDate()-i); if(!dset.has(isoOf(d))) missedLast7++; }
+    $('statsRow').innerHTML = `
+      <div class="stat-card"><div class="stat-num">${longest}</div><div class="stat-label">Longest streak</div></div>
+      <div class="stat-card"><div class="stat-num">${entries.length}</div><div class="stat-label">Total sessions</div></div>
+      <div class="stat-card"><div class="stat-num">${uniqueExercises().length}</div><div class="stat-label">Workouts tracked</div></div>
+      <div class="stat-card"><div class="stat-num">${dset.size}</div><div class="stat-label">Days active</div></div>
+      <div class="stat-card"><div class="stat-num ${missedLast7>0?'alert':''}">${missedLast7}</div><div class="stat-label">Missed, last 7d</div></div>
+    `;
+  }
+
+  // ---------- Breakdown by day / range ----------
+  function setRange(from, to, presetKey){
+    rangeFrom = from; rangeTo = to;
+    $('rangeFrom').value = from; $('rangeTo').value = to;
+    document.querySelectorAll('.preset-row button').forEach(b => b.classList.toggle('active-preset', b.getAttribute('data-preset') === presetKey));
+    renderBreakdown();
+    if($('calContent').style.display !== 'none') renderCalendar();
+  }
+  document.querySelectorAll('.preset-row button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const key = btn.getAttribute('data-preset');
+      const today = todayStr();
+      if(key === 'today') setRange(today, today, key);
+      else if(key === 'yesterday'){ const d=new Date(); d.setDate(d.getDate()-1); setRange(isoOf(d), isoOf(d), key); }
+      else if(key === '7'){ const d=new Date(); d.setDate(d.getDate()-6); setRange(isoOf(d), today, key); }
+      else if(key === '30'){ const d=new Date(); d.setDate(d.getDate()-29); setRange(isoOf(d), today, key); }
+      else if(key === 'month'){ const d=new Date(); d.setDate(1); setRange(isoOf(d), today, key); }
+      else if(key === 'all'){ const dates = Array.from(loggedDateSet()).sort(); setRange(dates[0]||today, today, key); }
+    });
+  });
+  $('applyRangeBtn').addEventListener('click', () => {
+    const from = $('rangeFrom').value, to = $('rangeTo').value;
+    if(!from || !to) return;
+    setRange(from > to ? to : from, from > to ? from : to, null);
+  });
+
+  function renderBreakdown(){
+    const from = rangeFrom, to = rangeTo;
+    $('rangeLabel').textContent = from === to ? `Showing ${fmtDateFull(from)}` : `Showing ${fmtDateFull(from)} – ${fmtDateFull(to)}`;
+    const inRange = entries.filter(e => e.date >= from && e.date <= to);
+    const tbody = document.querySelector('#breakdownTable tbody');
+    if(inRange.length === 0){
+      tbody.innerHTML = '<tr><td class="empty-state" colspan="4">No sessions logged in this range.</td></tr>';
+      return;
+    }
+    const map = {};
+    inRange.forEach(e => {
+      if(!map[e.exercise]) map[e.exercise] = {sessions:0, reps:0, mins:0};
+      map[e.exercise].sessions++;
+      if(e.type === 'reps') map[e.exercise].reps += e.value; else map[e.exercise].mins += e.value;
+    });
+    const names = Object.keys(map).sort((a,b)=>a.localeCompare(b));
+    let totalSessions=0, totalReps=0, totalMins=0;
+    const rowsHtml = names.map(name => {
+      const r = map[name];
+      totalSessions += r.sessions; totalReps += r.reps; totalMins += r.mins;
+      return `<tr><td>${escapeHtml(name)}</td><td>${r.sessions}</td><td>${r.reps || '—'}</td><td>${r.mins || '—'}</td></tr>`;
+    }).join('');
+    tbody.innerHTML = rowsHtml + `<tr class="totals-row"><td>Total</td><td>${totalSessions}</td><td>${totalReps || '—'}</td><td>${totalMins || '—'}</td></tr>`;
+  }
+
+  // ---------- Render: calendar ----------
+  function renderCalendar(){
+    const dset = loggedDateSet();
+    const grid = $('calGrid'); grid.innerHTML = '';
+    ['S','M','T','W','T','F','S'].forEach(d => { const el=document.createElement('div'); el.className='cal-dow'; el.textContent=d; grid.appendChild(el); });
+    const days = 42;
+    const today = new Date(); today.setHours(0,0,0,0);
+    const start = new Date(today); start.setDate(start.getDate()-(days-1));
+    const startDow = start.getDay();
+    for(let i=0;i<startDow;i++){ const pad=document.createElement('div'); pad.className='cal-cell pad'; grid.appendChild(pad); }
+    for(let i=0;i<days;i++){
+      const d = new Date(start); d.setDate(d.getDate()+i);
+      const key = isoOf(d);
+      const cell = document.createElement('div'); cell.className='cal-cell'; cell.textContent = d.getDate();
+      if(d.getTime() > today.getTime()) cell.classList.add('future');
+      else if(dset.has(key)) cell.classList.add('logged');
+      else cell.classList.add('missed');
+      if(key === todayStr()) cell.classList.add('today');
+      if(key >= rangeFrom && key <= rangeTo) cell.classList.add('selected');
+      cell.addEventListener('click', () => setRange(key, key, null));
+      grid.appendChild(cell);
+    }
+  }
+
+  // ---------- Render: bar chart ----------
+  function renderBars(){
+    const counts = [];
+    for(let i=13;i>=0;i--){ const d=new Date(); d.setDate(d.getDate()-i); const key=isoOf(d); counts.push({label:String(d.getDate()), n: entries.filter(e=>e.date===key).length}); }
+    const max = Math.max(1, ...counts.map(c=>c.n));
+    $('barsChart').innerHTML = counts.map(c => `<div class="bar-col"><div class="bar" style="height:${Math.round((c.n/max)*90)+(c.n>0?6:0)}px; background:${c.n===0?'var(--grid-line-strong)':'var(--teal)'}"></div><div class="bar-day">${c.label}</div></div>`).join('');
+  }
+
+  // ---------- Render: session log table ----------
+  function renderTable(){
+    const tbody = document.querySelector('#ledgerTable tbody');
+    if(entries.length === 0){
+      tbody.innerHTML = '<tr><td class="empty-state" colspan="6">No sessions logged yet. Log your first one above.</td></tr>';
+      $('deleteSelectedBtn').disabled = true; $('deleteSelectedBtn').textContent = 'Delete selected (0)'; $('selectAllChk').checked = false;
+      return;
+    }
+    const rows = sortedEntriesDesc();
+    tbody.innerHTML = rows.map(en => {
+      if(en.id === editingId){
+        const options = (workouts.includes(en.exercise) ? workouts : [en.exercise, ...workouts])
+          .map(w => `<option value="${escapeHtml(w)}" ${w===editState.exercise?'selected':''}>${escapeHtml(w)}</option>`).join('');
+        return `<tr>
+          <td></td>
+          <td><input type="date" id="editDate" value="${editState.date}"></td>
+          <td><select id="editExercise">${options}</select></td>
+          <td><div class="type-toggle mini" style="width:130px;"><button type="button" id="editTypeReps" class="${editState.type==='reps'?'active':''}">Reps</button><button type="button" id="editTypeMins" class="${editState.type==='mins'?'active':''}">Mins</button></div></td>
+          <td><input type="number" id="editValue" min="0" step="1" value="${editState.value}" style="width:80px;"></td>
+          <td class="row-actions"><button class="save" id="saveEditBtn">Save</button><button id="cancelEditBtn">Cancel</button></td>
+        </tr>`;
+      }
+      const pillClass = en.type === 'reps' ? 'reps' : 'mins';
+      const catLabel = en.type === 'reps' ? 'Reps' : 'Minutes';
+      return `<tr>
+        <td><input type="checkbox" class="rowChk" data-id="${en.id}" ${selectedIds.has(en.id)?'checked':''}></td>
+        <td class="date-col">${fmtDateLabel(en.date)}</td>
+        <td>${escapeHtml(en.exercise)}</td>
+        <td><span class="cat-pill ${pillClass}">${catLabel}</span></td>
+        <td>${en.value}</td>
+        <td class="row-actions"><button class="edit" data-id="${en.id}">Edit</button><button class="del" data-id="${en.id}">Delete</button></td>
+      </tr>`;
+    }).join('');
+
+    tbody.querySelectorAll('.rowChk').forEach(chk => chk.addEventListener('change', () => {
+      const id = chk.getAttribute('data-id');
+      if(chk.checked) selectedIds.add(id); else selectedIds.delete(id);
+      updateBulkBar();
+    }));
+    tbody.querySelectorAll('button.edit').forEach(btn => btn.addEventListener('click', () => {
+      const en = entries.find(e => e.id === btn.getAttribute('data-id'));
+      editingId = en.id; editState = {date:en.date, exercise:en.exercise, type:en.type, value:en.value};
+      renderTable();
+    }));
+    tbody.querySelectorAll('button.del').forEach(btn => btn.addEventListener('click', async () => {
+      if(!confirm('Delete this session?')) return;
+      const id = btn.getAttribute('data-id');
+      entries = entries.filter(e => e.id !== id);
+      selectedIds.delete(id);
+      localSaveEntries();
+      if(supabaseClient && currentUser){ try{ await deleteCloudEntry(id); }catch(e){ setCloudStatus('Could not delete cloud entry: '+e.message,'fail'); } }
+      renderAll();
+    }));
+    if(editingId){
+      $('editTypeReps').addEventListener('click', () => { editState.type='reps'; renderTable(); });
+      $('editTypeMins').addEventListener('click', () => { editState.type='mins'; renderTable(); });
+      $('cancelEditBtn').addEventListener('click', () => { editingId=null; renderTable(); });
+      $('saveEditBtn').addEventListener('click', () => {
+        const date=$('editDate').value, exercise=$('editExercise').value, value=parseFloat($('editValue').value);
+        if(!date||!exercise||!value||value<=0) return;
+        const en = entries.find(e => e.id === editingId);
+        en.date=date; en.exercise=exercise; en.type=editState.type; en.value=value;
+        editingId = null; localSaveEntries();
+        if(supabaseClient && currentUser){
+          try{
+            const {error}=await supabaseClient.from('training_entries').update({
+              date, exercise, type:editState.type, value
+            }).eq('id', en.id).eq('user_id', currentUser.id);
+            if(error) throw error;
+          }catch(e){ setCloudStatus('Could not update cloud entry: '+e.message,'fail'); }
+        }
+        renderAll();
+      });
+    }
+    updateBulkBar();
+  }
+  function updateBulkBar(){
+    $('deleteSelectedBtn').disabled = selectedIds.size === 0;
+    $('deleteSelectedBtn').textContent = `Delete selected (${selectedIds.size})`;
+    $('selectAllChk').checked = entries.length > 0 && selectedIds.size === entries.length;
+  }
+
+  function renderAll(){
+    renderStats(); renderWorkoutChips(); renderExerciseSelect(); renderTable(); renderBreakdown();
+    if($('calContent').style.display !== 'none') renderCalendar();
+    if($('barsContent').style.display !== 'none') renderBars();
+  }
+
+  loadAll();
+  const savedCfg = getConfig();
+  if(savedCfg.url) $('supabaseUrlInput').value = savedCfg.url;
+  if(savedCfg.key) $('supabaseKeyInput').value = savedCfg.key;
+  initSupabase();
+  document.querySelector('[data-preset="today"]').classList.add('active-preset');
+})();
+</script>
+</body>
+</html>
