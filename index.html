@@ -12,7 +12,6 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;500;600&family=Work+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
   :root{
     --paper:#1B1D19; --panel:#232620; --panel-2:#292C24; --ink:#EDE7D9;
@@ -125,9 +124,6 @@
   .table-toolbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px;}
   .table-toolbar .left{display:flex;align-items:center;gap:10px;font-family:var(--font-mono);font-size:11px;color:var(--muted);}
   .top-actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end;margin-bottom:18px;}
-  .sync-panel{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:var(--panel-2);border:1px solid var(--grid-line-strong);padding:12px;margin-bottom:18px;}
-  .sync-info{font-family:var(--font-mono);font-size:11px;color:var(--muted);}
-  .sync-info strong{color:var(--teal);font-weight:600;}
 
   @media (max-width:600px){ .hero{flex-direction:column;align-items:flex-start;} .streak-block{text-align:left;} }
 </style>
@@ -217,19 +213,6 @@
   </div>
 
   <div class="panel">
-    <div class="panel-title-row"><div class="panel-title">Google Drive sync</div></div>
-    <div class="sync-panel">
-      <div class="sync-info" id="driveStatus"><strong>Not connected</strong> — your data is currently stored on this device.</div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        <button class="btn secondary small" id="googleConnectBtn">Connect Google Drive</button>
-        <button class="btn secondary small" id="googleSyncBtn" disabled>Sync now</button>
-        <button class="btn secondary small" id="googleConfigBtn">Google setup</button>
-      </div>
-    </div>
-    <div class="hint">The app creates/updates its own <b>training-log.xlsx</b> in your Google Drive. It uses Google's limited <code>drive.file</code> permission, not access to your entire Drive.</div>
-  </div>
-
-  <div class="panel">
     <div class="top-actions">
       <input type="file" id="importFile" accept=".xlsx,.xls" style="display:none;">
       <button class="btn secondary" id="importBtn">Import from Excel</button>
@@ -262,14 +245,6 @@
   let editingId = null;
   let editState = {};
   let rangeFrom, rangeTo;
-  let googleTokenClient = null;
-  let googleAccessToken = null;
-  let driveFileId = localStorage.getItem('training-ledger-drive-file-id') || null;
-  let driveSyncTimer = null;
-  const GOOGLE_CLIENT_ID_KEY = 'training-ledger-google-client-id';
-  const GOOGLE_CLIENT_ID = () => localStorage.getItem(GOOGLE_CLIENT_ID_KEY) || '';
-  const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
-  const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
   const $ = (id) => document.getElementById(id);
   const isoOf = (d) => d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
@@ -293,11 +268,8 @@
     renderAll();
   }
   function saveEntries(){
-    try{
-      localStorage.setItem(ENTRIES_KEY, JSON.stringify(entries));
-      setStatus('ok');
-      scheduleDriveSync();
-    }catch(e){ setStatus('fail'); }
+    try{ localStorage.setItem(ENTRIES_KEY, JSON.stringify(entries)); setStatus('ok'); }
+    catch(e){ setStatus('fail'); }
   }
   function saveWorkouts(){
     try{ localStorage.setItem(WORKOUTS_KEY, JSON.stringify(workouts)); }catch(e){ /* non-fatal */ }
@@ -307,184 +279,6 @@
     if(state === 'fail'){ el.textContent = 'Could not save — your browser may be blocking storage for this file.'; el.style.color = 'var(--stamp-red)'; }
     else { el.textContent = 'Saved sessions stay in this browser, tied to this file, even after you close the tab.'; el.style.color = ''; }
   }
-
-  // ---------- Google Drive sync ----------
-  function setDriveStatus(text, connected=false, error=false){
-    const el = $('driveStatus');
-    el.innerHTML = connected ? `<strong>${escapeHtml(text)}</strong>` : `<span style="color:${error?'var(--stamp-red)':'var(--muted)'}">${escapeHtml(text)}</span>`;
-    $('googleSyncBtn').disabled = !connected || !googleAccessToken;
-  }
-
-  function getGoogleClientId(){
-    return GOOGLE_CLIENT_ID();
-  }
-
-  function configureGoogleClientId(){
-    const current = getGoogleClientId();
-    const value = prompt('Paste your Google OAuth 2.0 Web client ID (ends with .apps.googleusercontent.com):', current);
-    if(value === null) return false;
-    const id = value.trim();
-    if(!id || !id.endsWith('.apps.googleusercontent.com')){
-      alert('That does not look like a Google OAuth Web client ID.');
-      return false;
-    }
-    localStorage.setItem(GOOGLE_CLIENT_ID_KEY, id);
-    initGoogleAuth();
-    return true;
-  }
-
-  function initGoogleAuth(){
-    const clientId = getGoogleClientId();
-    if(!clientId || !window.google || !google.accounts || !google.accounts.oauth2) return false;
-    googleTokenClient = google.accounts.oauth2.initTokenClient({
-      client_id: clientId,
-      scope: `openid profile email ${DRIVE_SCOPE}`,
-      callback: async (response) => {
-        if(response.error){ setDriveStatus('Google authorization failed.', false, true); return; }
-        googleAccessToken = response.access_token;
-        setDriveStatus('Google Drive connected', true);
-        await syncFromDriveOrUpload();
-      },
-      error_callback: () => setDriveStatus('Google authorization failed.', false, true)
-    });
-    return true;
-  }
-
-  function requestGoogleAccess(promptMode=''){
-    if(!getGoogleClientId()){
-      if(!configureGoogleClientId()) return;
-    }
-    if(!googleTokenClient) initGoogleAuth();
-    if(!googleTokenClient){
-      alert('Google Identity Services has not loaded yet. Check your internet connection and try again.');
-      return;
-    }
-    googleTokenClient.requestAccessToken({prompt: promptMode});
-  }
-
-  async function driveApi(url, options={}){
-    if(!googleAccessToken) throw new Error('Not connected to Google Drive');
-    const headers = new Headers(options.headers || {});
-    headers.set('Authorization', `Bearer ${googleAccessToken}`);
-    const response = await fetch(url, {...options, headers});
-    if(response.status === 401){
-      googleAccessToken = null;
-      setDriveStatus('Google session expired — tap Connect Google Drive.', false, true);
-      throw new Error('Google session expired');
-    }
-    if(!response.ok){
-      let detail = response.statusText;
-      try{ const j=await response.json(); detail=j.error?.message || detail; }catch(_){ }
-      throw new Error(detail);
-    }
-    return response;
-  }
-
-  async function findDriveFile(){
-    const q = encodeURIComponent("name='training-log.xlsx' and trashed=false");
-    const response = await driveApi(`https://www.googleapis.com/drive/v3/files?q=${q}&spaces=drive&fields=files(id,name,modifiedTime)&pageSize=10`);
-    const data = await response.json();
-    return data.files?.[0] || null;
-  }
-
-  function workbookBlob(){
-    const rows = sortedEntriesDesc().slice().reverse().map(en => ({
-      Date: en.date,
-      Workout: en.exercise,
-      Category: en.type==='reps'?'Reps':(en.type==='kms'?'KMs':'Minutes'),
-      Amount: en.value
-    }));
-    const ws = XLSX.utils.json_to_sheet(rows);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Training Log');
-    const bytes = XLSX.write(wb, {bookType:'xlsx', type:'array'});
-    return new Blob([bytes], {type:XLSX_MIME});
-  }
-
-  async function uploadWorkbook(fileId=null){
-    const blob = workbookBlob();
-    const boundary = 'training_ledger_' + Math.random().toString(36).slice(2);
-    const metadata = {name:'training-log.xlsx', mimeType:XLSX_MIME};
-    const body = new Blob([
-      `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n`,
-      JSON.stringify(metadata),
-      `\r\n--${boundary}\r\nContent-Type: ${XLSX_MIME}\r\n\r\n`,
-      blob,
-      `\r\n--${boundary}--`
-    ], {type:`multipart/related; boundary=${boundary}`});
-    const url = fileId
-      ? `https://www.googleapis.com/upload/drive/v3/files/${encodeURIComponent(fileId)}?uploadType=multipart`
-      : 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';
-    const response = await driveApi(url, {method:fileId?'PATCH':'POST', headers:{'Content-Type':`multipart/related; boundary=${boundary}`}, body});
-    const data = await response.json();
-    driveFileId = data.id || fileId;
-    if(driveFileId) localStorage.setItem('training-ledger-drive-file-id', driveFileId);
-    setDriveStatus('Synced to Google Drive', true);
-  }
-
-  async function downloadWorkbook(fileId){
-    const response = await driveApi(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media`);
-    const buffer = await response.arrayBuffer();
-    const wb = XLSX.read(buffer, {type:'array'});
-    const ws = wb.Sheets[wb.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json(ws);
-    const imported=[]; const names=[];
-    rows.forEach((r,i)=>{
-      const date=normalizeDate(r.Date);
-      const exercise=(r.Workout||r.Exercise||'').toString().trim();
-      const catRaw=(r.Category||r.Type||'').toString().toLowerCase();
-      const type=catRaw.startsWith('rep')?'reps':(catRaw.startsWith('min')?'mins':(catRaw.startsWith('km')?'kms':null));
-      const value=parseFloat(r.Amount||r.Value);
-      if(!date||!exercise||!type||!value||value<=0) return;
-      imported.push({id:Date.now()+'-'+Math.random().toString(36).slice(2,8)+'-'+i,date,exercise,type,value});
-      if(!names.some(w=>w.toLowerCase()===exercise.toLowerCase())) names.push(exercise);
-    });
-    entries=imported;
-    names.forEach(w=>{if(!workouts.some(x=>x.toLowerCase()===w.toLowerCase())) workouts.push(w);});
-    workouts.sort((a,b)=>a.localeCompare(b));
-    localStorage.setItem(ENTRIES_KEY, JSON.stringify(entries));
-    localStorage.setItem(WORKOUTS_KEY, JSON.stringify(workouts));
-    selectedIds.clear();
-    renderAll();
-    setDriveStatus('Restored from Google Drive', true);
-  }
-
-  async function syncFromDriveOrUpload(){
-    try{
-      let file = null;
-      if(driveFileId){
-        try{ file = await driveApi(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(driveFileId)}?fields=id,name,trashed`); const meta=await file.json(); if(meta.trashed) file=null; }catch(_){ file=null; }
-      }
-      if(!file) file = await findDriveFile();
-      if(file){
-        driveFileId=file.id;
-        localStorage.setItem('training-ledger-drive-file-id', driveFileId);
-        if(entries.length===0){ await downloadWorkbook(driveFileId); return; }
-        const useDrive = confirm('A Training Ledger file already exists in Google Drive. Use the Drive copy on this device?\n\nOK = restore Drive data\nCancel = keep this device\'s data and upload it to Drive');
-        if(useDrive) await downloadWorkbook(driveFileId); else await uploadWorkbook(driveFileId);
-      }else{
-        await uploadWorkbook(null);
-      }
-    }catch(err){ setDriveStatus('Sync failed: '+(err.message||'unknown error'), false, true); }
-  }
-
-  function scheduleDriveSync(){
-    if(!googleAccessToken) return;
-    clearTimeout(driveSyncTimer);
-    driveSyncTimer=setTimeout(async()=>{
-      try{
-        if(!driveFileId){ const f=await findDriveFile(); if(f) driveFileId=f.id; }
-        await uploadWorkbook(driveFileId || null);
-      }catch(err){ setDriveStatus('Saved locally; Drive sync failed.', false, true); }
-    }, 900);
-  }
-
-  $('googleConfigBtn').addEventListener('click', configureGoogleClientId);
-  $('googleConnectBtn').addEventListener('click', () => requestGoogleAccess(''));
-  $('googleSyncBtn').addEventListener('click', async () => {
-    if(!googleAccessToken){ requestGoogleAccess(''); return; }
-    await syncFromDriveOrUpload();
-  });
 
   // ---------- Workouts panel ----------
   $('addWorkoutBtn').addEventListener('click', () => {
@@ -829,12 +623,6 @@
   loadAll();
   updateMeasurementUI();
   document.querySelector('[data-preset="today"]').classList.add('active-preset');
-  setDriveStatus(getGoogleClientId() ? 'Google configured — tap Connect Google Drive.' : 'Not connected — your data is currently stored on this device.');
-  let googleInitTries=0;
-  const googleInitTimer=setInterval(()=>{
-    googleInitTries++;
-    if(initGoogleAuth() || googleInitTries>=20) clearInterval(googleInitTimer);
-  },500);
 
   if ('serviceWorker' in navigator) {
     let refreshing = false;
