@@ -153,26 +153,6 @@
         <button class="btn secondary" id="githubSignInBtn" type="button">Sign in with GitHub</button>
         <button class="btn secondary" id="githubSignOutBtn" type="button" style="display:none;">Sign out</button>
       </div>
-
-      <div class="form-row">
-        <div class="field" style="min-width:220px;">
-          <label for="emailInput">Email</label>
-          <input id="emailInput" type="email" autocomplete="email" placeholder="you@example.com">
-        </div>
-        <div class="field" style="min-width:180px;">
-          <label for="passwordInput">Password</label>
-          <input id="passwordInput" type="password" autocomplete="current-password" placeholder="Minimum 6 characters">
-        </div>
-        <div class="field" style="flex:0;">
-          <label>&nbsp;</label><button class="btn" id="signInBtn">Sign in</button>
-        </div>
-        <div class="field" style="flex:0;">
-          <label>&nbsp;</label><button class="btn secondary" id="signUpBtn">Create account</button>
-        </div>
-        <div class="field" style="flex:0;">
-          <label>&nbsp;</label><button class="btn secondary" id="signOutBtn" style="display:none;">Sign out</button>
-        </div>
-      </div>
       <div class="hint" id="cloudStatus">Not signed in.</div>
     </div>
   </div>
@@ -358,6 +338,9 @@
     };
   }
 
+  const githubSignInBtn = $('githubSignInBtn');
+  const githubSignOutBtn = $('githubSignOutBtn');
+
   function initSupabase(urlOverride='', keyOverride=''){
     const cfg = getConfig();
     const url = urlOverride || cfg.url;
@@ -375,6 +358,9 @@
       setCloudStatus('Supabase connected. Sign in to sync your data.');
       supabaseClient.auth.getSession().then(({data}) => {
         if(data && data.session) handleSignedIn(data.session.user);
+        if(window.location.hash && /access_token=|refresh_token=/.test(window.location.hash)){
+          history.replaceState(null, document.title, window.location.pathname + window.location.search);
+        }
       });
       supabaseClient.auth.onAuthStateChange((_event, session) => {
         if(session) handleSignedIn(session.user);
@@ -391,9 +377,7 @@
     currentUser = user;
     if(githubSignInBtn) githubSignInBtn.style.display = 'none';
     if(githubSignOutBtn) githubSignOutBtn.style.display = '';
-    $('emailInput').value = user.email || '';
-    $('passwordInput').value = '';
-    setCloudStatus('Signed in as ' + (user.email || 'user') + '. Syncing…', 'ok');
+    setCloudStatus('Signed in as ' + (user.email || 'GitHub user') + '. Syncing…', 'ok');
     await syncLocalToCloud();
     await loadCloudData();
   }
@@ -481,14 +465,19 @@
 
   async function saveWorkouts(){
     localSaveWorkouts();
-    if(!supabaseClient || !currentUser) return;
+    if(!supabaseClient || !currentUser) return true;
     try{
       const rows = workouts.map(name => ({user_id:currentUser.id, name}));
       if(rows.length){
         const {error} = await supabaseClient.from('workouts').upsert(rows, {onConflict:'user_id,name'});
         if(error) throw error;
       }
-    }catch(e){ setCloudStatus('Could not save workout list: ' + e.message, 'fail'); }
+      setCloudStatus('Workout list saved to cloud.', 'ok');
+      return true;
+    }catch(e){
+      setCloudStatus('Could not save workout list: ' + (e.message || e), 'fail');
+      return false;
+    }
   }
 
   async function removeCloudWorkout(name){
@@ -500,13 +489,19 @@
   localLoad();
 
   // ---------- Workouts panel ----------
-  $('addWorkoutBtn').addEventListener('click', () => {
+  $('addWorkoutBtn').addEventListener('click', async () => {
     const val = $('newWorkoutInput').value.trim();
     if(!val) return;
-    if(workouts.some(w => w.toLowerCase() === val.toLowerCase())){ $('newWorkoutInput').value=''; return; }
-    workouts.push(val); workouts.sort((a,b)=>a.localeCompare(b));
+    if(workouts.some(w => w.toLowerCase() === val.toLowerCase())){
+      $('newWorkoutInput').value='';
+      return;
+    }
+    workouts.push(val);
+    workouts.sort((a,b)=>a.localeCompare(b));
     $('newWorkoutInput').value = '';
-    saveWorkouts(); renderWorkoutChips(); renderExerciseSelect();
+    renderWorkoutChips();
+    renderExerciseSelect();
+    await saveWorkouts();
   });
   $('newWorkoutInput').addEventListener('keydown', (e) => { if(e.key === 'Enter') $('addWorkoutBtn').click(); });
 
@@ -543,33 +538,7 @@
     initSupabase(url, key);
   });
 
-  $('signInBtn').addEventListener('click', async () => {
-    if(!supabaseClient) return;
-    const email=$('emailInput').value.trim(), password=$('passwordInput').value;
-    if(!email || !password){ setCloudStatus('Enter your email and password.', 'fail'); return; }
-    const {error}=await supabaseClient.auth.signInWithPassword({email,password});
-    if(error) setCloudStatus(error.message,'fail');
-  });
-
-  $('signUpBtn').addEventListener('click', async () => {
-    if(!supabaseClient) return;
-    const email=$('emailInput').value.trim(), password=$('passwordInput').value;
-    if(!email || password.length < 6){ setCloudStatus('Enter an email and a password of at least 6 characters.','fail'); return; }
-    const {data,error}=await supabaseClient.auth.signUp({email,password});
-    if(error){ setCloudStatus(error.message,'fail'); return; }
-    if(data.session) setCloudStatus('Account created and signed in.','ok');
-    else setCloudStatus('Account created. Check your email if confirmation is enabled in Supabase.','ok');
-  });
-
-  $('signOutBtn').addEventListener('click', async () => {
-    if(supabaseClient) await supabaseClient.auth.signOut();
-  });
-
-
   // ---------- GitHub OAuth ----------
-  const githubSignInBtn = $('githubSignInBtn');
-  const githubSignOutBtn = $('githubSignOutBtn');
-
   if(githubSignInBtn){
     githubSignInBtn.addEventListener('click', async () => {
       if(!supabaseClient){
