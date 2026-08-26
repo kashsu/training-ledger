@@ -829,7 +829,7 @@
       $('editTypeReps').addEventListener('click', () => { editState.type='reps'; renderTable(); });
       $('editTypeMins').addEventListener('click', () => { editState.type='mins'; renderTable(); });
       $('cancelEditBtn').addEventListener('click', () => { editingId=null; renderTable(); });
-      $('saveEditBtn').addEventListener('click', () => {
+      $('saveEditBtn').addEventListener('click', async () => {
         const date=$('editDate').value, exercise=$('editExercise').value, value=parseFloat($('editValue').value);
         if(!date||!exercise||!value||value<=0) return;
         const en = entries.find(e => e.id === editingId);
