@@ -1,4 +1,4 @@
-const CACHE_NAME = 'training-ledger-v3';
+const CACHE_NAME = 'training-ledger-v5';
 const APP_SHELL = [
   './',
   './index.html',
@@ -28,6 +28,28 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET') return;
 
+  const url = new URL(event.request.url);
+  const isNavigation = event.request.mode === 'navigate' ||
+    (event.request.headers.get('accept') || '').includes('text/html');
+
+  // Always check the network first for HTML. This makes GitHub Pages/Vercel
+  // deployments update the installed PWA instead of serving an old index.html.
+  if (isNavigation) {
+    event.respondWith(
+      fetch(event.request)
+        .then(response => {
+          if (response && response.ok) {
+            const copy = response.clone();
+            caches.open(CACHE_NAME).then(cache => cache.put('./index.html', copy));
+          }
+          return response;
+        })
+        .catch(() => caches.match('./index.html'))
+    );
+    return;
+  }
+
+  // Cache-first for static assets; new assets are cached when first requested.
   event.respondWith(
     caches.match(event.request).then(cached => {
       if (cached) return cached;
