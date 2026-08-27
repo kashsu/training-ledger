@@ -144,7 +144,7 @@
 <div class="wrap">
 
   <div class="hero">
-    <div><span class="eyebrow">Training Ledger</span><h1>SESSION LOG</h1></div>
+    <div><span class="eyebrow">Kash · Training Ledger</span><h1>SESSION LOG</h1></div>
     <div class="streak-block"><div class="streak-num" id="streakNum">–</div><div class="streak-label">Day streak</div></div>
   </div>
 
@@ -435,19 +435,25 @@
   }
 
   // ---------- Type toggle ----------
-  function isRunningSelected(){ return $('exerciseSelect').value.trim().toLowerCase() === 'running'; }
+  function isDistanceWorkout(name){
+    const n = String(name || '').trim().toLowerCase();
+    return n === 'running' || n === 'walking';
+  }
+  function isRunningSelected(){ return isDistanceWorkout($('exerciseSelect').value); }
   function updateMeasurementUI(){
-    const running = isRunningSelected();
-    $('typeKms').style.display = running ? '' : 'none';
-    if(running){
-      selectedType='kms';
-      $('typeKms').classList.add('active');
+    const distanceWorkout = isRunningSelected();
+    $('typeKms').style.display = distanceWorkout ? '' : 'none';
+    $('typeReps').style.display = distanceWorkout ? 'none' : '';
+    if(distanceWorkout){
+      if(selectedType !== 'kms' && selectedType !== 'mins') selectedType='kms';
+      $('typeKms').classList.toggle('active', selectedType==='kms');
+      $('typeMins').classList.toggle('active', selectedType==='mins');
       $('typeReps').classList.remove('active');
-      $('typeMins').classList.remove('active');
-      $('valueLabel').textContent='Kilometers';
+      $('valueLabel').textContent = selectedType==='mins' ? 'Minutes' : 'Kilometers';
     }else{
       if(selectedType==='kms') selectedType='reps';
       $('typeKms').classList.remove('active');
+      $('typeReps').style.display = '';
       $('typeReps').classList.toggle('active', selectedType==='reps');
       $('typeMins').classList.toggle('active', selectedType==='mins');
       $('valueLabel').textContent = selectedType==='mins' ? 'Minutes' : 'Reps';
@@ -455,7 +461,7 @@
   }
   $('exerciseSelect').addEventListener('change', updateMeasurementUI);
   $('typeReps').addEventListener('click', () => { if(isRunningSelected()) return; selectedType='reps'; updateMeasurementUI(); });
-  $('typeMins').addEventListener('click', () => { if(isRunningSelected()) return; selectedType='mins'; updateMeasurementUI(); });
+  $('typeMins').addEventListener('click', () => { selectedType='mins'; updateMeasurementUI(); });
   $('typeKms').addEventListener('click', () => { if(isRunningSelected()){ selectedType='kms'; updateMeasurementUI(); } });
 
   // ---------- Add entry ----------
@@ -700,7 +706,7 @@
           <td></td>
           <td><input type="date" id="editDate" value="${editState.date}"></td>
           <td><select id="editExercise">${options}</select></td>
-          <td><div class="type-toggle mini" style="width:160px;"><button type="button" id="editTypeReps" class="${editState.type==='reps'?'active':''}" ${editState.exercise.toLowerCase()==='running'?'style=\"display:none\"':''}>Reps</button><button type="button" id="editTypeMins" class="${editState.type==='mins'?'active':''}" ${editState.exercise.toLowerCase()==='running'?'style=\"display:none\"':''}>Mins</button><button type="button" id="editTypeKms" class="${editState.type==='kms'?'active':''}" ${editState.exercise.toLowerCase()==='running'?'':'style=\"display:none\"'}>KMs</button></div></td>
+          <td><div class="type-toggle mini" style="width:160px;"><button type="button" id="editTypeReps" class="${editState.type==='reps'?'active':''}" ${isDistanceWorkout(editState.exercise)?'style=\"display:none\"':''}>Reps</button><button type="button" id="editTypeMins" class="${editState.type==='mins'?'active':''}">Mins</button><button type="button" id="editTypeKms" class="${editState.type==='kms'?'active':''}" ${isDistanceWorkout(editState.exercise)?'':'style=\"display:none\"'}>KMs</button></div></td>
           <td><input type="number" id="editValue" min="0" step="1" value="${editState.value}" style="width:80px;"></td>
           <td class="row-actions"><button class="save" id="saveEditBtn">Save</button><button id="cancelEditBtn">Cancel</button></td>
         </tr>`;
@@ -736,8 +742,15 @@
     if(editingId){
       $('editTypeReps').addEventListener('click', () => { editState.type='reps'; renderTable(); });
       $('editTypeMins').addEventListener('click', () => { editState.type='mins'; renderTable(); });
-      $('editTypeKms').addEventListener('click', () => { if($('editExercise').value.trim().toLowerCase()==='running'){ editState.type='kms'; renderTable(); } });
-      $('editExercise').addEventListener('change', () => { if($('editExercise').value.trim().toLowerCase()==='running'){ editState.type='kms'; renderTable(); } else if(editState.type==='kms'){ editState.type='reps'; renderTable(); } });
+      $('editTypeKms').addEventListener('click', () => { if(isDistanceWorkout($('editExercise').value)){ editState.type='kms'; renderTable(); } });
+      $('editExercise').addEventListener('change', () => {
+        if(isDistanceWorkout($('editExercise').value)){
+          if(editState.type==='reps') editState.type='kms';
+        } else if(editState.type==='kms'){
+          editState.type='reps';
+        }
+        renderTable();
+      });
       $('cancelEditBtn').addEventListener('click', () => { editingId=null; renderTable(); });
       $('saveEditBtn').addEventListener('click', () => {
         const date=$('editDate').value, exercise=$('editExercise').value, value=parseFloat($('editValue').value);
