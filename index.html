@@ -149,7 +149,7 @@
   </div>
 
   <div class="panel" id="bodyPanel">
-    <div class="panel-title-row"><div class="panel-title">Body & BMI</div></div>
+    <div class="panel-title-row"><div class="panel-title">Body & BMI</div><button class="btn secondary small" id="profileToggleBtn" type="button" style="display:none;">Show profile</button></div>
     <div id="profileSetup">
       <div class="bmi-grid">
         <div class="field"><label for="heightInput">Height (cm)</label><input type="number" id="heightInput" min="50" max="250" step="0.1" placeholder="e.g. 175"></div>
@@ -163,7 +163,7 @@
         <div class="stat-card"><div class="stat-num" id="profileAge">–</div><div class="stat-label">Age</div></div>
         <div class="stat-card"><div class="stat-num" id="profileDob">–</div><div class="stat-label">Date of birth</div></div>
       </div>
-      <div class="profile-locked">Height and date of birth are saved once and used for BMI calculations.</div>
+      <div class="profile-locked">Height and date of birth are saved once and used for BMI calculations. <button class="btn secondary small" id="editProfileBtn" type="button" style="margin-left:8px;">Edit profile</button></div>
     </div>
     <div class="panel-title-row" style="margin-top:22px;"><div class="panel-title">Add weight</div></div>
     <div class="form-row">
@@ -354,14 +354,17 @@
     return 'Obesity';
   }
   function renderBody(){
-    const setup=$('profileSetup'), saved=$('profileSaved');
+    const setup=$('profileSetup'), saved=$('profileSaved'), toggle=$('profileToggleBtn');
     if(profile && profile.height && profile.dob){
-      setup.style.display='none'; saved.style.display='block';
+      setup.style.display='none';
+      saved.style.display = saved.dataset.open === '1' ? 'block' : 'none';
+      toggle.style.display='inline-block';
+      toggle.textContent = saved.dataset.open === '1' ? 'Hide profile' : 'Show profile';
       $('profileHeight').textContent = Number(profile.height).toFixed(1)+' cm';
       $('profileAge').textContent = calcAge(profile.dob) ?? '–';
       $('profileDob').textContent = fmtDateFull(profile.dob);
     }else{
-      setup.style.display='block'; saved.style.display='none';
+      setup.style.display='block'; saved.style.display='none'; toggle.style.display='none';
     }
     const sorted=weights.slice().sort((a,b)=>b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
     const latest=sorted[0];
@@ -375,10 +378,27 @@
     }).join('');
     $('weightList').querySelectorAll('[data-weight-id]').forEach(btn=>btn.addEventListener('click',()=>{ weights=weights.filter(w=>w.id!==btn.getAttribute('data-weight-id')); saveWeights(); renderBody(); }));
   }
+  function startProfileEdit(){
+    if(!profile) return;
+    $('profileSaved').dataset.open='1';
+    $('profileToggleBtn').style.display='inline-block';
+    $('heightInput').value = profile.height;
+    $('dobInput').value = profile.dob;
+    $('profileSetup').style.display='block';
+    $('profileSaved').style.display='none';
+    $('saveProfileBtn').textContent='Save changes';
+    $('heightInput').focus();
+  }
   $('saveProfileBtn').addEventListener('click',()=>{
     const height=parseFloat($('heightInput').value), dob=$('dobInput').value;
     if(!height || height<50 || height>250 || !dob){ return; }
-    profile={height,dob}; saveProfile(); renderBody();
+    profile={height,dob}; saveProfile(); $('saveProfileBtn').textContent='Save profile'; $('profileSaved').dataset.open='0'; renderBody();
+  });
+  $('editProfileBtn').addEventListener('click', startProfileEdit);
+  $('profileToggleBtn').addEventListener('click',()=>{
+    const saved=$('profileSaved');
+    saved.dataset.open = saved.dataset.open === '1' ? '0' : '1';
+    renderBody();
   });
   $('addWeightBtn').addEventListener('click',()=>{
     const weight=parseFloat($('weightInput').value), date=$('weightDateInput').value || todayStr();
