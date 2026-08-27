@@ -125,6 +125,18 @@
   .table-toolbar .left{display:flex;align-items:center;gap:10px;font-family:var(--font-mono);font-size:11px;color:var(--muted);}
   .top-actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end;margin-bottom:18px;}
 
+
+  .bmi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;}
+  .bmi-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-top:16px;}
+  .bmi-value{font-family:var(--font-display);font-size:34px;color:var(--teal);line-height:1;}
+  .bmi-status{font-family:var(--font-mono);font-size:11px;color:var(--muted);margin-top:5px;text-transform:uppercase;letter-spacing:1px;}
+  .weight-list{margin-top:16px;}
+  .weight-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--grid-line);font-family:var(--font-mono);font-size:12px;gap:12px;}
+  .weight-row:last-child{border-bottom:none;}
+  .weight-row .date{color:var(--muted);}
+  .weight-row .bmi{color:var(--teal);}
+  .profile-locked{font-family:var(--font-mono);font-size:11px;color:var(--muted-2);margin-top:10px;}
+
   @media (max-width:600px){ .hero{flex-direction:column;align-items:flex-start;} .streak-block{text-align:left;} }
 </style>
 </head>
@@ -134,6 +146,36 @@
   <div class="hero">
     <div><span class="eyebrow">Kash · Training Ledger</span><h1>SESSION LOG</h1></div>
     <div class="streak-block"><div class="streak-num" id="streakNum">–</div><div class="streak-label">Day streak</div></div>
+  </div>
+
+  <div class="panel" id="bodyPanel">
+    <div class="panel-title-row"><div class="panel-title">Body & BMI</div></div>
+    <div id="profileSetup">
+      <div class="bmi-grid">
+        <div class="field"><label for="heightInput">Height (cm)</label><input type="number" id="heightInput" min="50" max="250" step="0.1" placeholder="e.g. 175"></div>
+        <div class="field"><label for="dobInput">Date of birth</label><input type="date" id="dobInput"></div>
+        <div class="field" style="flex:0;"><label>&nbsp;</label><button class="btn" id="saveProfileBtn">Save profile</button></div>
+      </div>
+    </div>
+    <div id="profileSaved" style="display:none;">
+      <div class="bmi-grid">
+        <div class="stat-card"><div class="stat-num" id="profileHeight">–</div><div class="stat-label">Height</div></div>
+        <div class="stat-card"><div class="stat-num" id="profileAge">–</div><div class="stat-label">Age</div></div>
+        <div class="stat-card"><div class="stat-num" id="profileDob">–</div><div class="stat-label">Date of birth</div></div>
+      </div>
+      <div class="profile-locked">Height and date of birth are saved once and used for BMI calculations.</div>
+    </div>
+    <div class="panel-title-row" style="margin-top:22px;"><div class="panel-title">Add weight</div></div>
+    <div class="form-row">
+      <div class="field" style="min-width:130px;"><label for="weightInput">Weight (kg)</label><input type="number" id="weightInput" min="1" max="500" step="0.1" placeholder="e.g. 72.5"></div>
+      <div class="field" style="min-width:150px;"><label for="weightDateInput">Date</label><input type="date" id="weightDateInput"></div>
+      <div class="field" style="flex:0;"><label>&nbsp;</label><button class="btn" id="addWeightBtn">Add weight</button></div>
+    </div>
+    <div class="bmi-summary">
+      <div class="stat-card"><div class="bmi-value" id="currentWeight">–</div><div class="stat-label">Current weight</div></div>
+      <div class="stat-card"><div class="bmi-value" id="currentBmi">–</div><div class="stat-label">BMI</div><div class="bmi-status" id="bmiStatus">Profile required</div></div>
+    </div>
+    <div class="weight-list" id="weightList"></div>
   </div>
 
   <div class="panel">
@@ -238,8 +280,12 @@
 (function(){
   const ENTRIES_KEY = 'training-ledger-entries';
   const WORKOUTS_KEY = 'training-ledger-workouts';
+  const PROFILE_KEY = 'training-ledger-profile';
+  const WEIGHTS_KEY = 'training-ledger-weights';
   let entries = [];
   let workouts = [];
+  let profile = null;
+  let weights = [];
   let selectedType = 'reps';
   let selectedIds = new Set();
   let editingId = null;
@@ -254,6 +300,7 @@
   const escapeHtml = (s) => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
   $('dateInput').value = todayStr();
+  $('weightDateInput').value = todayStr();
   rangeFrom = todayStr(); rangeTo = todayStr();
   $('rangeFrom').value = rangeFrom; $('rangeTo').value = rangeTo;
 
@@ -261,6 +308,8 @@
   function loadAll(){
     try{ entries = JSON.parse(localStorage.getItem(ENTRIES_KEY) || '[]'); }catch(e){ entries = []; }
     try{ workouts = JSON.parse(localStorage.getItem(WORKOUTS_KEY) || '[]'); }catch(e){ workouts = []; }
+    try{ profile = JSON.parse(localStorage.getItem(PROFILE_KEY) || 'null'); }catch(e){ profile = null; }
+    try{ weights = JSON.parse(localStorage.getItem(WEIGHTS_KEY) || '[]'); }catch(e){ weights = []; }
     if(workouts.length === 0 && entries.length > 0){
       workouts = Array.from(new Set(entries.map(e => e.exercise))).sort((a,b)=>a.localeCompare(b));
       saveWorkouts();
@@ -274,11 +323,70 @@
   function saveWorkouts(){
     try{ localStorage.setItem(WORKOUTS_KEY, JSON.stringify(workouts)); }catch(e){ /* non-fatal */ }
   }
+  function saveProfile(){
+    try{ localStorage.setItem(PROFILE_KEY, JSON.stringify(profile)); }catch(e){ /* non-fatal */ }
+  }
+  function saveWeights(){
+    try{ localStorage.setItem(WEIGHTS_KEY, JSON.stringify(weights)); }catch(e){ /* non-fatal */ }
+  }
   function setStatus(state){
     const el = $('statusHint');
     if(state === 'fail'){ el.textContent = 'Could not save — your browser may be blocking storage for this file.'; el.style.color = 'var(--stamp-red)'; }
     else { el.textContent = 'Saved sessions stay in this browser, tied to this file, even after you close the tab.'; el.style.color = ''; }
   }
+
+  // ---------- Body & BMI ----------
+  function calcAge(dob){
+    if(!dob) return null;
+    const [y,m,d] = dob.split('-').map(Number);
+    const now = new Date();
+    let age = now.getFullYear()-y;
+    const beforeBirthday = (now.getMonth()+1 < m) || (now.getMonth()+1 === m && now.getDate() < d);
+    if(beforeBirthday) age--;
+    return age >= 0 ? age : null;
+  }
+  function calcBmi(weight){ return profile && profile.height ? weight / Math.pow(profile.height/100,2) : null; }
+  function bmiLabel(bmi){
+    if(bmi == null) return 'Profile required';
+    if(bmi < 18.5) return 'Underweight';
+    if(bmi < 25) return 'Normal';
+    if(bmi < 30) return 'Overweight';
+    return 'Obesity';
+  }
+  function renderBody(){
+    const setup=$('profileSetup'), saved=$('profileSaved');
+    if(profile && profile.height && profile.dob){
+      setup.style.display='none'; saved.style.display='block';
+      $('profileHeight').textContent = Number(profile.height).toFixed(1)+' cm';
+      $('profileAge').textContent = calcAge(profile.dob) ?? '–';
+      $('profileDob').textContent = fmtDateFull(profile.dob);
+    }else{
+      setup.style.display='block'; saved.style.display='none';
+    }
+    const sorted=weights.slice().sort((a,b)=>b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
+    const latest=sorted[0];
+    $('currentWeight').textContent = latest ? Number(latest.weight).toFixed(1)+' kg' : '–';
+    const bmi=latest ? calcBmi(latest.weight) : null;
+    $('currentBmi').textContent = bmi != null ? bmi.toFixed(1) : '–';
+    $('bmiStatus').textContent = bmiLabel(bmi);
+    $('weightList').innerHTML = sorted.slice(0,10).map(w=>{
+      const b=calcBmi(w.weight);
+      return `<div class="weight-row"><span class="date">${fmtDateFull(w.date)}</span><span>${Number(w.weight).toFixed(1)} kg</span><span class="bmi">BMI ${b != null ? b.toFixed(1) : '–'}</span><button class="row-actions button" data-weight-id="${w.id}" style="background:none;border:1px solid var(--grid-line-strong);color:var(--muted);font-family:var(--font-mono);font-size:10px;padding:5px 9px;border-radius:2px;cursor:pointer;">Delete</button></div>`;
+    }).join('');
+    $('weightList').querySelectorAll('[data-weight-id]').forEach(btn=>btn.addEventListener('click',()=>{ weights=weights.filter(w=>w.id!==btn.getAttribute('data-weight-id')); saveWeights(); renderBody(); }));
+  }
+  $('saveProfileBtn').addEventListener('click',()=>{
+    const height=parseFloat($('heightInput').value), dob=$('dobInput').value;
+    if(!height || height<50 || height>250 || !dob){ return; }
+    profile={height,dob}; saveProfile(); renderBody();
+  });
+  $('addWeightBtn').addEventListener('click',()=>{
+    const weight=parseFloat($('weightInput').value), date=$('weightDateInput').value || todayStr();
+    if(!weight || weight<=0 || weight>500) return;
+    weights.push({id:Date.now()+'-'+Math.random().toString(36).slice(2,7),date,weight});
+    $('weightInput').value=''; saveWeights(); renderBody();
+  });
+  $('weightInput').addEventListener('keydown',e=>{if(e.key==='Enter')$('addWeightBtn').click();});
 
   // ---------- Workouts panel ----------
   $('addWorkoutBtn').addEventListener('click', () => {
@@ -615,6 +723,7 @@
   }
 
   function renderAll(){
+    renderBody();
     renderStats(); renderWorkoutChips(); renderExerciseSelect(); renderTable(); renderBreakdown();
     if($('calContent').style.display !== 'none') renderCalendar();
     if($('barsContent').style.display !== 'none') renderBars();
