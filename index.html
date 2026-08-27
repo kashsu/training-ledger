@@ -510,14 +510,27 @@
   }
 
   $('exportBtn').addEventListener('click', () => {
-    if(entries.length === 0){ alert('No sessions to export yet.'); return; }
-    const rows = sortedEntriesDesc().slice().reverse().map(en => ({
+    if(entries.length === 0 && weights.length === 0 && !profile){ alert('No data to export yet.'); return; }
+
+    const trainingRows = sortedEntriesDesc().slice().reverse().map(en => ({
       Date: en.date, Workout: en.exercise, Category: en.type==='reps'?'Reps':(en.type==='mins'?'Minutes':'KMs'), Amount: en.value
     }));
-    const ws = XLSX.utils.json_to_sheet(rows);
+    const weightRows = weights.slice().sort((a,b)=>a.date.localeCompare(b.date) || a.id.localeCompare(b.id)).map(w => ({
+      Date: w.date, WeightKg: Number(w.weight), BMI: calcBmi(w.weight) != null ? Number(calcBmi(w.weight).toFixed(1)) : ''
+    }));
+    const latest = weights.slice().sort((a,b)=>b.date.localeCompare(a.date) || b.id.localeCompare(a.id))[0];
+    const profileRows = [{
+      HeightCm: profile?.height ? Number(profile.height) : '',
+      DateOfBirth: profile?.dob || '',
+      CurrentWeightKg: latest ? Number(latest.weight) : '',
+      CurrentBMI: latest && calcBmi(latest.weight) != null ? Number(calcBmi(latest.weight).toFixed(1)) : ''
+    }];
+
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Training Log');
-    XLSX.writeFile(wb, 'training-log.xlsx');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(profileRows), 'Profile');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(weightRows), 'Weight History');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(trainingRows), 'Training Log');
+    XLSX.writeFile(wb, 'training-ledger.xlsx');
   });
 
   // ---------- Bulk select / delete ----------
